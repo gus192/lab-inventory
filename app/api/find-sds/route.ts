@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       // Small delay to be polite to external APIs
       await new Promise(r => setTimeout(r, 150))
     } catch {
-      results[cas] = `https://www.fishersci.com/us/en/catalog/search/sds?selectLang=EN&msdsKeyword=${encodeURIComponent(cas)}`
+      results[cas] = `https://pubchem.ncbi.nlm.nih.gov/#query=${encodeURIComponent(cas)}`
     }
   }
 
