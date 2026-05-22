@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { parseFileBuffer } from '@/lib/parseFile'
+import { parseFileRaw } from '@/lib/parseFile'
 
 export async function POST(req: Request) {
   const formData = await req.formData()
@@ -8,7 +8,7 @@ export async function POST(req: Request) {
   if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 })
 
   const buffer = await file.arrayBuffer()
-  const result = parseFileBuffer(buffer, file.name)
+  const result = parseFileRaw(buffer)
 
   return NextResponse.json(result)
 }

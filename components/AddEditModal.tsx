@@ -10,6 +10,17 @@ interface Props {
   onSave: (data: Partial<ChemicalInsert>) => Promise<void>
 }
 
+interface SdsLink { label: string; url: string }
+
+interface LookupResult {
+  name: string
+  cas_number: string | null
+  molecular_formula: string | null
+  sds_url: string
+  sds_links: SdsLink[]
+  pubchem_url: string
+}
+
 const EMPTY: Partial<ChemicalInsert> = {
   name: '',
   cas_number: '',
@@ -29,8 +40,14 @@ const EMPTY: Partial<ChemicalInsert> = {
 export default function AddEditModal({ chemical, onClose, onSave }: Props) {
   const [form, setForm] = useState<Partial<ChemicalInsert>>(EMPTY)
   const [saving, setSaving] = useState(false)
-  const [urlLoading, setUrlLoading] = useState(false)
-  const [urlError, setUrlError] = useState('')
+
+  // Name lookup state
+  const [lookupLoading, setLookupLoading] = useState(false)
+  const [lookupResult, setLookupResult] = useState<LookupResult | null>(null)
+  const [lookupError, setLookupError] = useState('')
+
+  // SDS options from lookup
+  const [sdsOptions, setSdsOptions] = useState<SdsLink[]>([])
 
   useEffect(() => {
     if (chemical) {
@@ -58,34 +75,32 @@ export default function AddEditModal({ chemical, onClose, onSave }: Props) {
     setForm(f => ({ ...f, [field]: value }))
   }
 
-  async function fillFromUrl() {
-    const url = form.purchase_url?.trim()
-    if (!url) return
-    setUrlLoading(true)
-    setUrlError('')
+  async function lookupByName() {
+    const name = form.name?.trim()
+    if (!name) return
+    setLookupLoading(true)
+    setLookupError('')
+    setLookupResult(null)
+
     try {
-      const res = await fetch('/api/fetch-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
-      })
+      const res = await fetch(`/api/lookup-chemical?q=${encodeURIComponent(name)}`)
       if (!res.ok) {
         const j = await res.json()
-        setUrlError(j.error ?? 'Failed to fetch URL')
+        setLookupError(j.error ?? 'Not found on PubChem')
         return
       }
-      const data = await res.json()
-      setForm(f => ({
-        ...f,
-        name: data.name || f.name,
-        cas_number: data.cas_number || f.cas_number,
-        supplier: data.supplier || f.supplier,
-        catalog_number: data.catalog_number || f.catalog_number,
-      }))
+      const data: LookupResult = await res.json()
+      setLookupResult(data)
+      setSdsOptions(data.sds_links)
+
+      // Auto-fill CAS if empty
+      if (!form.cas_number && data.cas_number) set('cas_number', data.cas_number)
+      // Auto-fill SDS URL
+      if (!form.sds_url && data.sds_url) set('sds_url', data.sds_url)
     } catch {
-      setUrlError('Network error fetching URL')
+      setLookupError('Network error')
     } finally {
-      setUrlLoading(false)
+      setLookupLoading(false)
     }
   }
 
@@ -93,7 +108,6 @@ export default function AddEditModal({ chemical, onClose, onSave }: Props) {
     e.preventDefault()
     setSaving(true)
     const payload: Partial<ChemicalInsert> = { ...form }
-    // Clean empty strings to null
     for (const k of Object.keys(payload) as (keyof ChemicalInsert)[]) {
       if (payload[k] === '') (payload as Record<string, unknown>)[k] = null
     }
@@ -112,38 +126,75 @@ export default function AddEditModal({ chemical, onClose, onSave }: Props) {
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {/* Purchase URL with auto-fill */}
+
+          {/* Chemical Name + PubChem lookup */}
           <div>
-            <label className="label">Purchase URL (paste supplier link to auto-fill)</label>
+            <label className="label">Chemical Name *</label>
             <div className="flex gap-2">
               <input
                 className="input"
-                type="url"
-                value={form.purchase_url ?? ''}
-                onChange={e => set('purchase_url', e.target.value)}
-                placeholder="https://www.sigmaaldrich.com/..."
+                value={form.name ?? ''}
+                onChange={e => { set('name', e.target.value); setLookupResult(null); setLookupError('') }}
+                required
+                placeholder="e.g. (3-Aminopropyl)triethoxysilane"
               />
               <button
                 type="button"
-                onClick={fillFromUrl}
-                disabled={urlLoading || !form.purchase_url}
+                onClick={lookupByName}
+                disabled={lookupLoading || !form.name?.trim()}
                 className="btn-secondary whitespace-nowrap"
+                title="Search PubChem for CAS number and SDS links"
               >
-                {urlLoading ? 'Fetching…' : 'Auto-fill'}
+                {lookupLoading ? 'Searching…' : 'Look up'}
               </button>
             </div>
-            {urlError && <p className="text-red-500 text-xs mt-1">{urlError}</p>}
+
+            {/* Lookup result banner */}
+            {lookupResult && (
+              <div className="mt-2 bg-teal-50 border border-teal-200 rounded-lg p-3 text-sm space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-teal-700 font-medium">Found on PubChem</span>
+                  <a href={lookupResult.pubchem_url} target="_blank" rel="noopener noreferrer"
+                    className="text-xs text-blue-600 hover:underline">View →</a>
+                </div>
+                {lookupResult.molecular_formula && (
+                  <p className="text-gray-600 text-xs">Formula: <strong>{lookupResult.molecular_formula}</strong></p>
+                )}
+                {lookupResult.cas_number && (
+                  <p className="text-gray-600 text-xs">CAS: <strong>{lookupResult.cas_number}</strong> (auto-filled below)</p>
+                )}
+                {sdsOptions.length > 0 && (
+                  <div className="pt-1">
+                    <p className="text-xs text-gray-600 mb-1">Choose SDS source:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {sdsOptions.map(opt => (
+                        <button
+                          key={opt.url}
+                          type="button"
+                          onClick={() => set('sds_url', opt.url)}
+                          className={`text-xs px-2 py-1 rounded border transition-colors ${
+                            form.sds_url === opt.url
+                              ? 'bg-teal-600 text-white border-teal-600'
+                              : 'bg-white text-gray-700 border-gray-300 hover:border-teal-400'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {lookupError && (
+              <p className="mt-1 text-xs text-red-500">{lookupError} — try a different name or fill in manually.</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <label className="label">Chemical Name *</label>
-              <input className="input" value={form.name ?? ''} onChange={e => set('name', e.target.value)} required />
-            </div>
-
             <div>
               <label className="label">CAS Number</label>
-              <input className="input" value={form.cas_number ?? ''} onChange={e => set('cas_number', e.target.value)} placeholder="e.g. 7732-18-5" />
+              <input className="input" value={form.cas_number ?? ''} onChange={e => set('cas_number', e.target.value)} placeholder="e.g. 919-30-2" />
             </div>
 
             <div>
@@ -195,8 +246,19 @@ export default function AddEditModal({ chemical, onClose, onSave }: Props) {
             </div>
 
             <div className="col-span-2">
-              <label className="label">SDS URL</label>
-              <input className="input" type="url" value={form.sds_url ?? ''} onChange={e => set('sds_url', e.target.value)} placeholder="Link to Safety Data Sheet" />
+              <label className="label">
+                SDS URL
+                {form.sds_url && (
+                  <a href={form.sds_url} target="_blank" rel="noopener noreferrer"
+                    className="ml-2 text-blue-600 hover:underline font-normal">Test link →</a>
+                )}
+              </label>
+              <input className="input" value={form.sds_url ?? ''} onChange={e => set('sds_url', e.target.value)} placeholder="Paste link or use Look up above" />
+            </div>
+
+            <div className="col-span-2">
+              <label className="label">Purchase URL</label>
+              <input className="input" type="url" value={form.purchase_url ?? ''} onChange={e => set('purchase_url', e.target.value)} placeholder="Link to supplier product page" />
             </div>
 
             <div className="col-span-2">

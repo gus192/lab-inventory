@@ -2,15 +2,30 @@
 
 import { useState, useRef } from 'react'
 import type { ChemicalInsert } from '@/types/chemical'
+import { COLUMN_LABELS } from '@/types/chemical'
+import { applyMappings } from '@/lib/mapRows'
 
 interface Props {
   onClose: () => void
   onImport: (rows: Partial<ChemicalInsert>[]) => Promise<void>
 }
 
+type Step = 'upload' | 'map' | 'preview'
+
+const FIELD_OPTIONS: Array<{ value: keyof ChemicalInsert | ''; label: string }> = [
+  { value: '', label: '— Skip —' },
+  ...Object.entries(COLUMN_LABELS).map(([value, label]) => ({
+    value: value as keyof ChemicalInsert,
+    label,
+  })),
+]
+
 export default function ImportModal({ onClose, onImport }: Props) {
-  const [rows, setRows] = useState<Partial<ChemicalInsert>[] | null>(null)
-  const [unmapped, setUnmapped] = useState<string[]>([])
+  const [step, setStep] = useState<Step>('upload')
+  const [headers, setHeaders] = useState<string[]>([])
+  const [rawRows, setRawRows] = useState<(string | number | null)[][]>([])
+  const [mappings, setMappings] = useState<Record<string, keyof ChemicalInsert | null>>({})
+  const [previewRows, setPreviewRows] = useState<Partial<ChemicalInsert>[]>([])
   const [parsing, setParsing] = useState(false)
   const [importing, setImporting] = useState(false)
   const [error, setError] = useState('')
@@ -21,20 +36,21 @@ export default function ImportModal({ onClose, onImport }: Props) {
     if (!file) return
     setParsing(true)
     setError('')
-    setRows(null)
 
     const fd = new FormData()
     fd.append('file', file)
 
     try {
       const res = await fetch('/api/import', { method: 'POST', body: fd })
-      if (!res.ok) {
-        setError('Failed to parse file')
-        return
-      }
+      if (!res.ok) { setError('Failed to parse file'); return }
       const data = await res.json()
-      setRows(data.rows)
-      setUnmapped(data.unmappedHeaders)
+
+      if (!data.headers?.length) { setError('No columns found in file'); return }
+
+      setHeaders(data.headers)
+      setRawRows(data.rawRows)
+      setMappings(data.suggestedMappings)
+      setStep('map')
     } catch {
       setError('Network error')
     } finally {
@@ -42,57 +58,131 @@ export default function ImportModal({ onClose, onImport }: Props) {
     }
   }
 
+  function setMapping(header: string, field: keyof ChemicalInsert | null) {
+    setMappings(prev => ({ ...prev, [header]: field }))
+  }
+
+  function buildPreview() {
+    const rows = applyMappings(headers, rawRows, mappings)
+    setPreviewRows(rows)
+    setStep('preview')
+  }
+
   async function handleImport() {
-    if (!rows) return
     setImporting(true)
-    await onImport(rows)
+    await onImport(previewRows)
     setImporting(false)
   }
 
-  const preview = rows?.slice(0, 5)
+  // Count how many columns are mapped vs skipped
+  const mappedCount = Object.values(mappings).filter(Boolean).length
+  const hasName = Object.values(mappings).includes('name')
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-5 border-b sticky top-0 bg-white">
-          <h2 className="text-lg font-semibold">Import from CSV / Excel</h2>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b">
+          <div>
+            <h2 className="text-lg font-semibold">Import from CSV / Excel</h2>
+            <div className="flex gap-4 mt-1">
+              {(['upload', 'map', 'preview'] as Step[]).map((s, i) => (
+                <span
+                  key={s}
+                  className={`text-xs font-medium ${step === s ? 'text-teal-600' : 'text-gray-300'}`}
+                >
+                  {i + 1}. {s === 'upload' ? 'Upload' : s === 'map' ? 'Map Columns' : 'Preview'}
+                </span>
+              ))}
+            </div>
+          </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
         </div>
 
-        <div className="p-5 space-y-4">
-          <div
-            className="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center cursor-pointer hover:border-teal-400 transition-colors"
-            onClick={() => fileRef.current?.click()}
-          >
-            <div className="text-4xl mb-2">📂</div>
-            <p className="font-medium text-gray-700">Click to select a CSV or Excel file</p>
-            <p className="text-sm text-gray-400 mt-1">Columns are auto-matched — Name, CAS, Location, Quantity, Supplier, etc.</p>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,.xlsx,.xls"
-              className="hidden"
-              onChange={handleFile}
-            />
-          </div>
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
 
-          {parsing && <p className="text-center text-teal-600">Parsing file…</p>}
-          {error && <p className="text-center text-red-600">{error}</p>}
-
-          {rows !== null && (
+          {/* Step 1: Upload */}
+          {step === 'upload' && (
             <>
-              {unmapped.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
-                  <strong>Unrecognized columns (ignored):</strong>{' '}
-                  {unmapped.join(', ')}
+              <div
+                className="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center cursor-pointer hover:border-teal-400 transition-colors"
+                onClick={() => fileRef.current?.click()}
+              >
+                <div className="text-4xl mb-2">📂</div>
+                <p className="font-medium text-gray-700">Click to select a CSV or Excel file</p>
+                <p className="text-sm text-gray-400 mt-1">You'll be able to manually assign any unrecognized columns</p>
+                <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleFile} />
+              </div>
+              {parsing && <p className="text-center text-teal-600">Reading file…</p>}
+              {error && <p className="text-center text-red-600">{error}</p>}
+            </>
+          )}
+
+          {/* Step 2: Map columns */}
+          {step === 'map' && (
+            <>
+              <p className="text-sm text-gray-600">
+                Found <strong>{headers.length}</strong> columns and <strong>{rawRows.length}</strong> rows.
+                Columns marked ✓ were auto-recognized. Assign any others using the dropdowns, or leave as "Skip".
+              </p>
+
+              {!hasName && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg px-3 py-2">
+                  You must map at least one column to <strong>Name</strong> to import.
                 </div>
               )}
 
-              <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 text-sm text-teal-800">
-                Found <strong>{rows.length}</strong> chemical{rows.length !== 1 ? 's' : ''} ready to import.
+              <div className="rounded-lg border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-medium text-gray-600 w-1/2">Column in your file</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-600 w-1/2">Maps to field</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {headers.map((header, i) => {
+                      const mapped = mappings[header]
+                      const isAuto = !!mapped
+                      return (
+                        <tr key={i} className="border-t">
+                          <td className="px-4 py-2.5">
+                            <span className="font-medium">{header || <em className="text-gray-400">(empty)</em>}</span>
+                            {isAuto && <span className="ml-2 text-teal-500 text-xs">✓ auto</span>}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <select
+                              className="input py-1"
+                              value={mapped ?? ''}
+                              onChange={e =>
+                                setMapping(header, (e.target.value as keyof ChemicalInsert) || null)
+                              }
+                            >
+                              {FIELD_OPTIONS.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                            </select>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
 
-              {preview && preview.length > 0 && (
+              <p className="text-xs text-gray-400">{mappedCount} column{mappedCount !== 1 ? 's' : ''} mapped</p>
+            </>
+          )}
+
+          {/* Step 3: Preview */}
+          {step === 'preview' && (
+            <>
+              <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 text-sm text-teal-800">
+                Found <strong>{previewRows.length}</strong> chemical{previewRows.length !== 1 ? 's' : ''} ready to import.
+              </div>
+
+              {previewRows.length > 0 && (
                 <div className="overflow-x-auto rounded-lg border">
                   <table className="text-xs w-full">
                     <thead className="bg-gray-50">
@@ -103,10 +193,10 @@ export default function ImportModal({ onClose, onImport }: Props) {
                       </tr>
                     </thead>
                     <tbody>
-                      {preview.map((r, i) => (
+                      {previewRows.slice(0, 6).map((r, i) => (
                         <tr key={i} className="border-t">
                           <td className="px-3 py-1.5 font-medium">{r.name ?? ''}</td>
-                          <td className="px-3 py-1.5 text-gray-500">{r.cas_number ?? ''}</td>
+                          <td className="px-3 py-1.5 text-gray-500 font-mono">{r.cas_number ?? ''}</td>
                           <td className="px-3 py-1.5">{r.location ?? ''}</td>
                           <td className="px-3 py-1.5">{r.quantity ?? ''}</td>
                           <td className="px-3 py-1.5">{r.unit ?? ''}</td>
@@ -114,10 +204,10 @@ export default function ImportModal({ onClose, onImport }: Props) {
                           <td className="px-3 py-1.5">{r.catalog_number ?? ''}</td>
                         </tr>
                       ))}
-                      {rows.length > 5 && (
+                      {previewRows.length > 6 && (
                         <tr className="border-t">
                           <td colSpan={7} className="px-3 py-1.5 text-gray-400 italic">
-                            …and {rows.length - 5} more
+                            …and {previewRows.length - 6} more
                           </td>
                         </tr>
                       )}
@@ -127,17 +217,36 @@ export default function ImportModal({ onClose, onImport }: Props) {
               )}
             </>
           )}
+        </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t">
-            <button onClick={onClose} className="btn-secondary">Cancel</button>
+        {/* Footer */}
+        <div className="flex justify-between gap-2 p-5 border-t bg-gray-50 rounded-b-xl">
+          <button
+            onClick={() => {
+              if (step === 'map') setStep('upload')
+              else if (step === 'preview') setStep('map')
+              else onClose()
+            }}
+            className="btn-secondary"
+          >
+            {step === 'upload' ? 'Cancel' : '← Back'}
+          </button>
+
+          {step === 'map' && (
+            <button onClick={buildPreview} disabled={!hasName} className="btn-primary">
+              Preview →
+            </button>
+          )}
+
+          {step === 'preview' && (
             <button
               onClick={handleImport}
-              disabled={!rows || rows.length === 0 || importing}
+              disabled={previewRows.length === 0 || importing}
               className="btn-primary"
             >
-              {importing ? 'Importing…' : `Import ${rows?.length ?? 0} Chemicals`}
+              {importing ? 'Importing…' : `Import ${previewRows.length} Chemicals`}
             </button>
-          </div>
+          )}
         </div>
       </div>
     </div>
