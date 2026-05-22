@@ -219,6 +219,8 @@ export default function HomePage() {
           chemical={modal === 'edit' ? editing : null}
           onClose={() => { setModal(null); setEditing(null) }}
           onSave={handleSave}
+          existingLocations={[...new Set(chemicals.map(c => c.location).filter(Boolean) as string[])].sort()}
+          existingDistributors={[...new Set(chemicals.map(c => c.distributor).filter(Boolean) as string[])].sort()}
         />
       )}
       {modal === 'import' && (

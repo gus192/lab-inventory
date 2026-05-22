@@ -11,6 +11,8 @@ interface Props {
   chemical?: Chemical | null
   onClose: () => void
   onSave: (data: Partial<ChemicalInsert>) => Promise<void>
+  existingLocations?: string[]
+  existingDistributors?: string[]
 }
 
 const EMPTY: Partial<ChemicalInsert> = {
@@ -19,7 +21,7 @@ const EMPTY: Partial<ChemicalInsert> = {
   bottle_count: undefined, storage_conditions: '', hazards: '', sds_url: '', notes: '',
 }
 
-export default function AddEditModal({ chemical, onClose, onSave }: Props) {
+export default function AddEditModal({ chemical, onClose, onSave, existingLocations = [], existingDistributors = [] }: Props) {
   const [form, setForm] = useState<Partial<ChemicalInsert>>(EMPTY)
   const [saving, setSaving] = useState(false)
   const [lookupLoading, setLookupLoading] = useState(false)
@@ -170,8 +172,11 @@ export default function AddEditModal({ chemical, onClose, onSave }: Props) {
             </div>
             <div>
               <label className="label">Distributor</label>
-              <input className="input" value={form.distributor ?? ''}
+              <input className="input" list="distributors-list" value={form.distributor ?? ''}
                 onChange={e => set('distributor', e.target.value)} placeholder="e.g. Sigma-Aldrich" />
+              <datalist id="distributors-list">
+                {existingDistributors.map(d => <option key={d} value={d} />)}
+              </datalist>
             </div>
           </div>
 
@@ -212,8 +217,11 @@ export default function AddEditModal({ chemical, onClose, onSave }: Props) {
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="label">Location</label>
-              <input className="input" value={form.location ?? ''}
+              <input className="input" list="locations-list" value={form.location ?? ''}
                 onChange={e => set('location', e.target.value)} placeholder="e.g. PN Hood" />
+              <datalist id="locations-list">
+                {existingLocations.map(l => <option key={l} value={l} />)}
+              </datalist>
             </div>
             <div>
               <label className="label"># of Carbons</label>
