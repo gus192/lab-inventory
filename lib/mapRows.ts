@@ -1,14 +1,5 @@
 import type { ChemicalInsert } from '@/types/chemical'
 
-function parseDate(val: string | number | null): string | null {
-  if (!val) return null
-  const str = String(val).trim()
-  if (!str) return null
-  const d = new Date(str)
-  if (!isNaN(d.getTime())) return d.toISOString().split('T')[0]
-  return str
-}
-
 export function applyMappings(
   headers: string[],
   rawRows: (string | number | null)[][],
@@ -27,12 +18,9 @@ export function applyMappings(
       if (val === null || val === undefined || val === '') return
       hasData = true
 
-      if (field === 'quantity') {
-        const n = parseFloat(String(val))
-        if (!isNaN(n)) entry.quantity = n
-      } else if (field === 'date_received' || field === 'expiration_date') {
-        const d = parseDate(val)
-        if (d) entry[field] = d
+      if (field === 'carbon_count' || field === 'bottle_count') {
+        const n = parseInt(String(val), 10)
+        if (!isNaN(n)) entry[field] = n
       } else {
         ;(entry as Record<string, unknown>)[field] = String(val).trim()
       }

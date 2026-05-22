@@ -7,30 +7,31 @@ interface Props {
   chemicals: Chemical[]
   onEdit: (c: Chemical) => void
   onDelete: (id: string) => void
+  onBulkDelete: (ids: string[]) => void
+  onExportSelected: (ids: string[]) => void
 }
 
 type SortKey = keyof Chemical
 type SortDir = 'asc' | 'desc'
 
-function isExpired(date: string | null): boolean {
-  if (!date) return false
-  return new Date(date) < new Date()
+const HAZARD_COLORS: Record<string, string> = {
+  'Flammable': 'bg-orange-50 text-orange-700 border-orange-200',
+  'Corrosive': 'bg-yellow-50 text-yellow-700 border-yellow-200',
+  'Toxic': 'bg-red-50 text-red-700 border-red-200',
+  'Irritant': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Reactive': 'bg-purple-50 text-purple-700 border-purple-200',
+  'Oxidizer': 'bg-blue-50 text-blue-700 border-blue-200',
+  'Moisture sensitive': 'bg-cyan-50 text-cyan-700 border-cyan-200',
+  'Air sensitive': 'bg-sky-50 text-sky-700 border-sky-200',
 }
 
-function isExpiringSoon(date: string | null): boolean {
-  if (!date) return false
-  const d = new Date(date)
-  const soon = new Date()
-  soon.setDate(soon.getDate() + 90)
-  return d >= new Date() && d <= soon
-}
-
-export default function ChemicalTable({ chemicals, onEdit, onDelete }: Props) {
+export default function ChemicalTable({ chemicals, onEdit, onDelete, onBulkDelete, onExportSelected }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('location')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [search, setSearch] = useState('')
   const [locationFilter, setLocationFilter] = useState('All')
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
 
   const locations = useMemo(() => {
     const locs = [...new Set(chemicals.map(c => c.location).filter(Boolean))] as string[]
@@ -46,10 +47,10 @@ export default function ChemicalTable({ chemicals, onEdit, onDelete }: Props) {
         return (
           c.name.toLowerCase().includes(q) ||
           (c.cas_number ?? '').toLowerCase().includes(q) ||
-          (c.supplier ?? '').toLowerCase().includes(q) ||
-          (c.catalog_number ?? '').toLowerCase().includes(q) ||
+          (c.distributor ?? '').toLowerCase().includes(q) ||
           (c.location ?? '').toLowerCase().includes(q) ||
-          (c.notes ?? '').toLowerCase().includes(q)
+          (c.hazards ?? '').toLowerCase().includes(q) ||
+          (c.physical_state ?? '').toLowerCase().includes(q)
         )
       })
       .sort((a, b) => {
@@ -61,135 +62,267 @@ export default function ChemicalTable({ chemicals, onEdit, onDelete }: Props) {
   }, [chemicals, search, locationFilter, sortKey, sortDir])
 
   function toggleSort(key: SortKey) {
-    if (sortKey === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortKey(key); setSortDir('asc') }
   }
 
-  function SortIcon({ col }: { col: SortKey }) {
-    if (sortKey !== col) return <span className="text-gray-300 ml-1">↕</span>
-    return <span className="text-teal-600 ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>
+  const allFilteredSelected = filtered.length > 0 && filtered.every(c => selected.has(c.id))
+  const someSelected = selected.size > 0
+
+  function toggleAll() {
+    if (allFilteredSelected) {
+      setSelected(prev => { const n = new Set(prev); filtered.forEach(c => n.delete(c.id)); return n })
+    } else {
+      setSelected(prev => { const n = new Set(prev); filtered.forEach(c => n.add(c.id)); return n })
+    }
   }
 
-  const Th = ({ col, label }: { col: SortKey; label: string }) => (
+  function toggleOne(id: string) {
+    setSelected(prev => {
+      const n = new Set(prev)
+      n.has(id) ? n.delete(id) : n.add(id)
+      return n
+    })
+  }
+
+  function clearSelection() { setSelected(new Set()) }
+
+  function handleBulkDelete() {
+    onBulkDelete([...selected])
+    setSelected(new Set())
+    setConfirmBulkDelete(false)
+  }
+
+  const SortIcon = ({ col }: { col: SortKey }) => {
+    if (sortKey !== col) return <span className="opacity-0 group-hover:opacity-40 ml-1 text-xs">↕</span>
+    return <span className="text-teal-600 ml-1 text-xs">{sortDir === 'asc' ? '↑' : '↓'}</span>
+  }
+
+  const Th = ({ col, label, className = '' }: { col: SortKey; label: string; className?: string }) => (
     <th
-      className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide cursor-pointer whitespace-nowrap hover:text-teal-700 select-none"
+      className={`px-3 py-3 text-left text-xs font-semibold text-slate-500 cursor-pointer group hover:text-slate-800 select-none whitespace-nowrap ${className}`}
       onClick={() => toggleSort(col)}
     >
       {label}<SortIcon col={col} />
     </th>
   )
 
+  const selectedCount = selected.size
+
   return (
     <div className="space-y-3">
-      {/* Search + location filter */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <input
-          className="input max-w-xs"
-          placeholder="Search chemicals…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-        <div className="flex items-center gap-1 flex-wrap">
+      {/* Search + location filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            className="input pl-9 w-56"
+            placeholder="Search chemicals…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button onClick={() => setSearch('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5 flex-wrap">
           {locations.map(loc => (
             <button
               key={loc}
               onClick={() => setLocationFilter(loc)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 locationFilter === loc
-                  ? 'bg-teal-600 text-white'
-                  : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300 hover:bg-slate-50'
               }`}
             >
               {loc}
             </button>
           ))}
         </div>
-        <span className="text-sm text-gray-400 ml-auto">{filtered.length} chemical{filtered.length !== 1 ? 's' : ''}</span>
+
+        <span className="text-xs text-slate-400 ml-auto">
+          {filtered.length} of {chemicals.length} chemicals
+        </span>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border shadow-sm">
-        <table className="w-full text-sm bg-white">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              <Th col="name" label="Name" />
-              <Th col="cas_number" label="CAS #" />
-              <Th col="location" label="Location" />
-              <Th col="quantity" label="Qty" />
-              <Th col="supplier" label="Supplier" />
-              <Th col="catalog_number" label="Catalog #" />
-              <Th col="expiration_date" label="Expiration" />
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Links</th>
-              <th className="px-3 py-2.5"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
-                  {chemicals.length === 0 ? 'No chemicals yet — add one or import a file.' : 'No results for this filter.'}
-                </td>
+      {/* Bulk action bar */}
+      {someSelected && (
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-800 text-white rounded-xl text-sm">
+          <span className="font-medium">{selectedCount} selected</span>
+          <div className="h-4 w-px bg-slate-600" />
+          <button
+            onClick={() => onExportSelected([...selected])}
+            className="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Export selected
+          </button>
+          <div className="h-4 w-px bg-slate-600" />
+          {confirmBulkDelete ? (
+            <span className="flex items-center gap-2">
+              <span className="text-red-300">Delete {selectedCount} chemicals?</span>
+              <button onClick={handleBulkDelete} className="text-red-300 hover:text-red-200 font-medium">Yes, delete</button>
+              <button onClick={() => setConfirmBulkDelete(false)} className="text-slate-400 hover:text-white">Cancel</button>
+            </span>
+          ) : (
+            <button
+              onClick={() => setConfirmBulkDelete(true)}
+              className="flex items-center gap-1.5 text-red-400 hover:text-red-300 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Delete selected
+            </button>
+          )}
+          <button onClick={clearSelection} className="ml-auto text-slate-400 hover:text-white">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50/50">
+                <th className="pl-4 pr-2 py-3 w-8">
+                  <input
+                    type="checkbox"
+                    checked={allFilteredSelected}
+                    onChange={toggleAll}
+                    className="w-3.5 h-3.5 rounded border-slate-300 text-teal-600 accent-teal-600 cursor-pointer"
+                  />
+                </th>
+                <Th col="name" label="Chemical Name" className="min-w-[200px]" />
+                <Th col="cas_number" label="CAS #" />
+                <Th col="distributor" label="Distributor" />
+                <Th col="container_size" label="Size" />
+                <Th col="physical_state" label="State" />
+                <Th col="location" label="Location" />
+                <Th col="carbon_count" label="Carbons" />
+                <Th col="bottle_count" label="Bottles" />
+                <Th col="storage_conditions" label="Storage" />
+                <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Hazards</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">SDS</th>
+                <th className="px-3 py-3 w-16" />
               </tr>
-            )}
-            {filtered.map(c => {
-              const expired = isExpired(c.expiration_date)
-              const expiring = isExpiringSoon(c.expiration_date)
-              return (
-                <tr key={c.id} className="border-t hover:bg-gray-50 group">
-                  <td className="px-3 py-2.5 font-medium max-w-xs">
-                    <div className="truncate" title={c.name}>{c.name}</div>
-                    {c.notes && <div className="text-xs text-gray-400 truncate">{c.notes}</div>}
-                  </td>
-                  <td className="px-3 py-2.5 text-gray-500 font-mono text-xs">{c.cas_number ?? '—'}</td>
-                  <td className="px-3 py-2.5">
-                    {c.location ? (
-                      <span className="inline-block px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium">
-                        {c.location}
-                      </span>
-                    ) : '—'}
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">
-                    {c.quantity != null ? `${c.quantity} ${c.unit ?? ''}` : '—'}
-                  </td>
-                  <td className="px-3 py-2.5 text-gray-600">{c.supplier ?? '—'}</td>
-                  <td className="px-3 py-2.5 text-gray-500 text-xs font-mono">{c.catalog_number ?? '—'}</td>
-                  <td className="px-3 py-2.5 whitespace-nowrap text-xs">
-                    {c.expiration_date ? (
-                      <span className={`font-medium ${expired ? 'text-red-600' : expiring ? 'text-amber-600' : 'text-gray-600'}`}>
-                        {expired ? '⚠ ' : expiring ? '⏳ ' : ''}{c.expiration_date}
-                      </span>
-                    ) : '—'}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex gap-2">
-                      {c.sds_url && (
-                        <a href={c.sds_url} target="_blank" rel="noopener noreferrer"
-                          className="text-xs text-blue-600 hover:underline">SDS</a>
-                      )}
-                      {c.purchase_url && (
-                        <a href={c.purchase_url} target="_blank" rel="noopener noreferrer"
-                          className="text-xs text-teal-600 hover:underline">Buy</a>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                    {confirmDelete === c.id ? (
-                      <span className="flex items-center gap-1 justify-end">
-                        <span className="text-xs text-red-600">Delete?</span>
-                        <button onClick={() => onDelete(c.id)} className="text-xs text-red-600 font-medium hover:underline">Yes</button>
-                        <button onClick={() => setConfirmDelete(null)} className="text-xs text-gray-500 hover:underline">No</button>
-                      </span>
-                    ) : (
-                      <span className="opacity-0 group-hover:opacity-100 flex gap-2 justify-end transition-opacity">
-                        <button onClick={() => onEdit(c)} className="text-teal-600 hover:text-teal-800 text-xs font-medium">Edit</button>
-                        <button onClick={() => setConfirmDelete(c.id)} className="text-red-500 hover:text-red-700 text-xs font-medium">Del</button>
-                      </span>
-                    )}
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={13} className="px-4 py-12 text-center text-slate-400 text-sm">
+                    {chemicals.length === 0
+                      ? 'No chemicals yet — add one or import a spreadsheet.'
+                      : 'No results match your search.'}
                   </td>
                 </tr>
-              )
-            })}
-          </tbody>
-        </table>
+              )}
+              {filtered.map(c => (
+                <tr key={c.id}
+                  className={`group hover:bg-slate-50/60 transition-colors ${selected.has(c.id) ? 'bg-teal-50/40' : ''}`}
+                >
+                  <td className="pl-4 pr-2 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(c.id)}
+                      onChange={() => toggleOne(c.id)}
+                      className="w-3.5 h-3.5 rounded border-slate-300 accent-teal-600 cursor-pointer"
+                    />
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <div className="font-medium text-slate-800 leading-snug">{c.name}</div>
+                    {c.notes && <div className="text-xs text-slate-400 truncate max-w-[200px]">{c.notes}</div>}
+                  </td>
+                  <td className="px-3 py-2.5 font-mono text-xs text-slate-500 whitespace-nowrap">
+                    {c.cas_number ?? '—'}
+                  </td>
+                  <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
+                    {c.distributor ?? '—'}
+                  </td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    {c.container_size ? (
+                      <span className="badge bg-slate-100 text-slate-700 border border-slate-200">{c.container_size}</span>
+                    ) : '—'}
+                  </td>
+                  <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
+                    {c.physical_state ?? '—'}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {c.location ? (
+                      <span className="badge bg-indigo-50 text-indigo-700 border border-indigo-100">{c.location}</span>
+                    ) : '—'}
+                  </td>
+                  <td className="px-3 py-2.5 text-center text-slate-600">
+                    {c.carbon_count ?? '—'}
+                  </td>
+                  <td className="px-3 py-2.5 text-center">
+                    {c.bottle_count != null ? (
+                      <span className={`badge border ${c.bottle_count === 0 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                        {c.bottle_count}
+                      </span>
+                    ) : '—'}
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">
+                    {c.storage_conditions ?? '—'}
+                  </td>
+                  <td className="px-3 py-2.5 max-w-[160px]">
+                    {c.hazards ? (
+                      <div className="flex flex-wrap gap-1">
+                        {c.hazards.split(', ').map(h => (
+                          <span key={h} className={`badge border text-[10px] ${HAZARD_COLORS[h] ?? 'bg-slate-50 text-slate-600 border-slate-200'}`}>
+                            {h}
+                          </span>
+                        ))}
+                      </div>
+                    ) : '—'}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {c.sds_url ? (
+                      <a href={c.sds_url} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-teal-600 hover:text-teal-800 font-medium hover:underline">
+                        SDS
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    ) : '—'}
+                  </td>
+                  <td className="px-3 py-2.5 text-right">
+                    <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 justify-end transition-opacity">
+                      <button onClick={() => onEdit(c)}
+                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                        </svg>
+                      </button>
+                      <button onClick={() => onDelete(c.id)}
+                        className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )

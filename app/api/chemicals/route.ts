@@ -14,11 +14,19 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json()
-
-  // Support bulk insert (array) or single insert
   const rows = Array.isArray(body) ? body : [body]
-
   const { data, error } = await supabase.from('chemicals').insert(rows).select()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data, { status: 201 })
+}
+
+// Bulk delete: DELETE /api/chemicals  body: { ids: string[] }
+export async function DELETE(req: Request) {
+  const { ids } = await req.json()
+  if (!Array.isArray(ids) || ids.length === 0)
+    return NextResponse.json({ error: 'ids required' }, { status: 400 })
+
+  const { error } = await supabase.from('chemicals').delete().in('id', ids)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true, deleted: ids.length })
 }

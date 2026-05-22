@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import type { Chemical, ChemicalInsert } from '@/types/chemical'
-import { UNITS } from '@/types/chemical'
+import {
+  CONTAINER_SIZES, PHYSICAL_STATES,
+  STORAGE_CONDITIONS, HAZARD_OPTIONS,
+} from '@/types/chemical'
 
 interface Props {
   chemical?: Chemical | null
@@ -10,64 +13,44 @@ interface Props {
   onSave: (data: Partial<ChemicalInsert>) => Promise<void>
 }
 
-interface SdsLink { label: string; url: string }
-
-interface LookupResult {
-  name: string
-  cas_number: string | null
-  molecular_formula: string | null
-  sds_url: string
-  sds_links: SdsLink[]
-  pubchem_url: string
-}
-
 const EMPTY: Partial<ChemicalInsert> = {
-  name: '',
-  cas_number: '',
-  location: '',
-  quantity: undefined,
-  unit: 'g',
-  supplier: '',
-  catalog_number: '',
-  lot_number: '',
-  date_received: '',
-  expiration_date: '',
-  sds_url: '',
-  purchase_url: '',
-  notes: '',
+  name: '', cas_number: '', distributor: '', container_size: '',
+  physical_state: '', location: '', carbon_count: undefined,
+  bottle_count: undefined, storage_conditions: '', hazards: '', sds_url: '', notes: '',
 }
 
 export default function AddEditModal({ chemical, onClose, onSave }: Props) {
   const [form, setForm] = useState<Partial<ChemicalInsert>>(EMPTY)
   const [saving, setSaving] = useState(false)
-
-  // Name lookup state
   const [lookupLoading, setLookupLoading] = useState(false)
-  const [lookupResult, setLookupResult] = useState<LookupResult | null>(null)
+  const [lookupInfo, setLookupInfo] = useState<{ formula?: string; pubchem_url?: string } | null>(null)
   const [lookupError, setLookupError] = useState('')
-
-  // SDS options from lookup
-  const [sdsOptions, setSdsOptions] = useState<SdsLink[]>([])
+  const [customSize, setCustomSize] = useState(false)
+  const [selectedHazards, setSelectedHazards] = useState<string[]>([])
 
   useEffect(() => {
     if (chemical) {
+      const h = chemical.hazards ? chemical.hazards.split(', ') : []
+      setSelectedHazards(h)
       setForm({
         name: chemical.name,
         cas_number: chemical.cas_number ?? '',
+        distributor: chemical.distributor ?? '',
+        container_size: chemical.container_size ?? '',
+        physical_state: chemical.physical_state ?? '',
         location: chemical.location ?? '',
-        quantity: chemical.quantity ?? undefined,
-        unit: chemical.unit ?? 'g',
-        supplier: chemical.supplier ?? '',
-        catalog_number: chemical.catalog_number ?? '',
-        lot_number: chemical.lot_number ?? '',
-        date_received: chemical.date_received ?? '',
-        expiration_date: chemical.expiration_date ?? '',
+        carbon_count: chemical.carbon_count ?? undefined,
+        bottle_count: chemical.bottle_count ?? undefined,
+        storage_conditions: chemical.storage_conditions ?? '',
+        hazards: chemical.hazards ?? '',
         sds_url: chemical.sds_url ?? '',
-        purchase_url: chemical.purchase_url ?? '',
         notes: chemical.notes ?? '',
       })
+      setCustomSize(!CONTAINER_SIZES.includes(chemical.container_size ?? ''))
     } else {
       setForm(EMPTY)
+      setSelectedHazards([])
+      setCustomSize(false)
     }
   }, [chemical])
 
@@ -75,27 +58,30 @@ export default function AddEditModal({ chemical, onClose, onSave }: Props) {
     setForm(f => ({ ...f, [field]: value }))
   }
 
+  function toggleHazard(h: string) {
+    setSelectedHazards(prev => {
+      const next = prev.includes(h) ? prev.filter(x => x !== h) : [...prev, h]
+      set('hazards', next.join(', '))
+      return next
+    })
+  }
+
   async function lookupByName() {
     const name = form.name?.trim()
     if (!name) return
     setLookupLoading(true)
     setLookupError('')
-    setLookupResult(null)
-
+    setLookupInfo(null)
     try {
       const res = await fetch(`/api/lookup-chemical?q=${encodeURIComponent(name)}`)
       if (!res.ok) {
         const j = await res.json()
-        setLookupError(j.error ?? 'Not found on PubChem')
+        setLookupError(j.error ?? 'Not found')
         return
       }
-      const data: LookupResult = await res.json()
-      setLookupResult(data)
-      setSdsOptions(data.sds_links)
-
-      // Auto-fill CAS if empty
+      const data = await res.json()
+      setLookupInfo({ formula: data.molecular_formula, pubchem_url: data.pubchem_url })
       if (!form.cas_number && data.cas_number) set('cas_number', data.cas_number)
-      // Auto-fill SDS URL
       if (!form.sds_url && data.sds_url) set('sds_url', data.sds_url)
     } catch {
       setLookupError('Network error')
@@ -107,7 +93,7 @@ export default function AddEditModal({ chemical, onClose, onSave }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
-    const payload: Partial<ChemicalInsert> = { ...form }
+    const payload = { ...form }
     for (const k of Object.keys(payload) as (keyof ChemicalInsert)[]) {
       if (payload[k] === '') (payload as Record<string, unknown>)[k] = null
     }
@@ -115,26 +101,34 @@ export default function AddEditModal({ chemical, onClose, onSave }: Props) {
     setSaving(false)
   }
 
+  const isEdit = !!chemical
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-5 border-b sticky top-0 bg-white">
-          <h2 className="text-lg font-semibold">
-            {chemical ? 'Edit Chemical' : 'Add Chemical'}
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h2 className="text-base font-semibold text-slate-800">
+            {isEdit ? 'Edit Chemical' : 'Add Chemical'}
           </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+          <button onClick={onClose} className="btn-ghost p-1.5 rounded-lg -mr-1">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
-          {/* Chemical Name + PubChem lookup */}
+          {/* Chemical Name */}
           <div>
             <label className="label">Chemical Name *</label>
             <div className="flex gap-2">
               <input
                 className="input"
                 value={form.name ?? ''}
-                onChange={e => { set('name', e.target.value); setLookupResult(null); setLookupError('') }}
+                onChange={e => { set('name', e.target.value); setLookupInfo(null); setLookupError('') }}
                 required
                 placeholder="e.g. (3-Aminopropyl)triethoxysilane"
               />
@@ -142,138 +136,169 @@ export default function AddEditModal({ chemical, onClose, onSave }: Props) {
                 type="button"
                 onClick={lookupByName}
                 disabled={lookupLoading || !form.name?.trim()}
-                className="btn-secondary whitespace-nowrap"
-                title="Search PubChem for CAS number and SDS links"
+                className="btn-secondary px-4"
               >
-                {lookupLoading ? 'Searching…' : 'Look up'}
+                {lookupLoading ? (
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                ) : 'Look up'}
               </button>
             </div>
-
-            {/* Lookup result banner */}
-            {lookupResult && (
-              <div className="mt-2 bg-teal-50 border border-teal-200 rounded-lg p-3 text-sm space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-teal-700 font-medium">Found on PubChem</span>
-                  <a href={lookupResult.pubchem_url} target="_blank" rel="noopener noreferrer"
-                    className="text-xs text-blue-600 hover:underline">View →</a>
-                </div>
-                {lookupResult.molecular_formula && (
-                  <p className="text-gray-600 text-xs">Formula: <strong>{lookupResult.molecular_formula}</strong></p>
-                )}
-                {lookupResult.cas_number && (
-                  <p className="text-gray-600 text-xs">CAS: <strong>{lookupResult.cas_number}</strong> (auto-filled below)</p>
-                )}
-                {sdsOptions.length > 0 && (
-                  <div className="pt-1">
-                    <p className="text-xs text-gray-600 mb-1">Choose SDS source:</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {sdsOptions.map(opt => (
-                        <button
-                          key={opt.url}
-                          type="button"
-                          onClick={() => set('sds_url', opt.url)}
-                          className={`text-xs px-2 py-1 rounded border transition-colors ${
-                            form.sds_url === opt.url
-                              ? 'bg-teal-600 text-white border-teal-600'
-                              : 'bg-white text-gray-700 border-gray-300 hover:border-teal-400'
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+            {lookupInfo && (
+              <div className="mt-2 flex items-center gap-3 text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded-lg px-3 py-2">
+                <span className="text-teal-500">✓</span>
+                <span>Found on PubChem{lookupInfo.formula ? ` — ${lookupInfo.formula}` : ''}. CAS &amp; SDS auto-filled.</span>
+                <a href={lookupInfo.pubchem_url} target="_blank" rel="noopener noreferrer"
+                  className="ml-auto font-medium hover:underline">View →</a>
               </div>
             )}
             {lookupError && (
-              <p className="mt-1 text-xs text-red-500">{lookupError} — try a different name or fill in manually.</p>
+              <p className="mt-1.5 text-xs text-red-500">{lookupError} — fill in manually below.</p>
             )}
           </div>
 
+          {/* Row 1 */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label">CAS Number</label>
-              <input className="input" value={form.cas_number ?? ''} onChange={e => set('cas_number', e.target.value)} placeholder="e.g. 919-30-2" />
+              <label className="label">CAS #</label>
+              <input className="input font-mono" value={form.cas_number ?? ''}
+                onChange={e => set('cas_number', e.target.value)} placeholder="e.g. 919-30-2" />
             </div>
-
             <div>
-              <label className="label">Location</label>
-              <input className="input" value={form.location ?? ''} onChange={e => set('location', e.target.value)} placeholder="e.g. PN Hood, Fridge 1" />
+              <label className="label">Distributor</label>
+              <input className="input" value={form.distributor ?? ''}
+                onChange={e => set('distributor', e.target.value)} placeholder="e.g. Sigma-Aldrich" />
             </div>
+          </div>
 
+          {/* Row 2 */}
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label">Quantity</label>
-              <input
-                className="input"
-                type="number"
-                step="any"
-                value={form.quantity ?? ''}
-                onChange={e => set('quantity', e.target.value ? parseFloat(e.target.value) : null)}
-              />
+              <label className="label">Container Size</label>
+              {customSize ? (
+                <div className="flex gap-2">
+                  <input className="input" value={form.container_size ?? ''}
+                    onChange={e => set('container_size', e.target.value)} placeholder="e.g. 2.5 kg" />
+                  <button type="button" onClick={() => { setCustomSize(false); set('container_size', '') }}
+                    className="btn-ghost px-2 text-xs">List</button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <select className="input" value={form.container_size ?? ''}
+                    onChange={e => set('container_size', e.target.value)}>
+                    <option value="">— Select —</option>
+                    {CONTAINER_SIZES.map(s => <option key={s}>{s}</option>)}
+                  </select>
+                  <button type="button" onClick={() => { setCustomSize(true); set('container_size', '') }}
+                    className="btn-ghost px-2 text-xs">Custom</button>
+                </div>
+              )}
             </div>
-
             <div>
-              <label className="label">Unit</label>
-              <select className="input" value={form.unit ?? 'g'} onChange={e => set('unit', e.target.value)}>
-                {UNITS.map(u => <option key={u}>{u}</option>)}
+              <label className="label">Physical State</label>
+              <select className="input" value={form.physical_state ?? ''}
+                onChange={e => set('physical_state', e.target.value)}>
+                <option value="">— Select —</option>
+                {PHYSICAL_STATES.map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
+          </div>
 
+          {/* Row 3 */}
+          <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="label">Supplier</label>
-              <input className="input" value={form.supplier ?? ''} onChange={e => set('supplier', e.target.value)} />
+              <label className="label">Location</label>
+              <input className="input" value={form.location ?? ''}
+                onChange={e => set('location', e.target.value)} placeholder="e.g. PN Hood" />
             </div>
-
             <div>
-              <label className="label">Catalog #</label>
-              <input className="input" value={form.catalog_number ?? ''} onChange={e => set('catalog_number', e.target.value)} />
+              <label className="label"># of Carbons</label>
+              <input className="input" type="number" min={0} value={form.carbon_count ?? ''}
+                onChange={e => set('carbon_count', e.target.value ? parseInt(e.target.value) : null)} />
             </div>
-
             <div>
-              <label className="label">Lot #</label>
-              <input className="input" value={form.lot_number ?? ''} onChange={e => set('lot_number', e.target.value)} />
-            </div>
-
-            <div>
-              <label className="label">Date Received</label>
-              <input className="input" type="date" value={form.date_received ?? ''} onChange={e => set('date_received', e.target.value)} />
-            </div>
-
-            <div>
-              <label className="label">Expiration Date</label>
-              <input className="input" type="date" value={form.expiration_date ?? ''} onChange={e => set('expiration_date', e.target.value)} />
-            </div>
-
-            <div className="col-span-2">
-              <label className="label">
-                SDS URL
-                {form.sds_url && (
-                  <a href={form.sds_url} target="_blank" rel="noopener noreferrer"
-                    className="ml-2 text-blue-600 hover:underline font-normal">Test link →</a>
-                )}
-              </label>
-              <input className="input" value={form.sds_url ?? ''} onChange={e => set('sds_url', e.target.value)} placeholder="Paste link or use Look up above" />
-            </div>
-
-            <div className="col-span-2">
-              <label className="label">Purchase URL</label>
-              <input className="input" type="url" value={form.purchase_url ?? ''} onChange={e => set('purchase_url', e.target.value)} placeholder="Link to supplier product page" />
-            </div>
-
-            <div className="col-span-2">
-              <label className="label">Notes</label>
-              <textarea className="input" rows={2} value={form.notes ?? ''} onChange={e => set('notes', e.target.value)} />
+              <label className="label"># of Bottles</label>
+              <div className="flex rounded-lg border border-slate-200 shadow-sm overflow-hidden bg-white">
+                <button type="button"
+                  className="px-3 py-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 border-r border-slate-200 text-lg leading-none"
+                  onClick={() => set('bottle_count', Math.max(0, (form.bottle_count ?? 0) - 1))}>−</button>
+                <input type="number" min={0}
+                  className="flex-1 text-center text-sm py-2 outline-none bg-transparent"
+                  value={form.bottle_count ?? ''}
+                  onChange={e => set('bottle_count', e.target.value ? parseInt(e.target.value) : null)} />
+                <button type="button"
+                  className="px-3 py-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 border-l border-slate-200 text-lg leading-none"
+                  onClick={() => set('bottle_count', (form.bottle_count ?? 0) + 1)}>+</button>
+              </div>
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t">
-            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-            <button type="submit" disabled={saving} className="btn-primary">
-              {saving ? 'Saving…' : chemical ? 'Save Changes' : 'Add Chemical'}
-            </button>
+          {/* Row 4 */}
+          <div>
+            <label className="label">Storage Conditions</label>
+            <select className="input" value={form.storage_conditions ?? ''}
+              onChange={e => set('storage_conditions', e.target.value)}>
+              <option value="">— Select —</option>
+              {STORAGE_CONDITIONS.map(s => <option key={s}>{s}</option>)}
+            </select>
           </div>
-        </form>
+
+          {/* Hazards */}
+          <div>
+            <label className="label">Hazards</label>
+            <div className="flex flex-wrap gap-1.5">
+              {HAZARD_OPTIONS.map(h => (
+                <button
+                  key={h}
+                  type="button"
+                  onClick={() => toggleHazard(h)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                    selectedHazards.includes(h)
+                      ? 'bg-amber-500 text-white border-amber-500'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-amber-300'
+                  }`}
+                >
+                  {h}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* SDS */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="label mb-0">SDS Link</label>
+              {form.sds_url && (
+                <a href={form.sds_url} target="_blank" rel="noopener noreferrer"
+                  className="text-xs text-teal-600 hover:underline">Test link →</a>
+              )}
+            </div>
+            <input className="input" value={form.sds_url ?? ''}
+              onChange={e => set('sds_url', e.target.value)}
+              placeholder="Paste SDS URL or use Look up above" />
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="label">Notes</label>
+            <textarea className="input resize-none" rows={2} value={form.notes ?? ''}
+              onChange={e => set('notes', e.target.value)} />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
+          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button
+            onClick={handleSubmit}
+            disabled={saving || !form.name?.trim()}
+            className="btn-primary"
+          >
+            {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Add Chemical'}
+          </button>
+        </div>
       </div>
     </div>
   )

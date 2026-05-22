@@ -5,29 +5,32 @@ import * as XLSX from 'xlsx'
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const format = searchParams.get('format') ?? 'csv'
+  const ids = searchParams.get('ids')?.split(',').filter(Boolean)
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('chemicals')
     .select('*')
     .order('location', { ascending: true, nullsFirst: false })
     .order('name', { ascending: true })
 
+  if (ids && ids.length > 0) query = query.in('id', ids)
+
+  const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const rows = (data ?? []).map(c => ({
-    Name: c.name,
-    'CAS Number': c.cas_number ?? '',
-    Location: c.location ?? '',
-    Quantity: c.quantity ?? '',
-    Unit: c.unit ?? '',
-    Supplier: c.supplier ?? '',
-    'Catalog #': c.catalog_number ?? '',
-    'Lot #': c.lot_number ?? '',
-    'Date Received': c.date_received ?? '',
-    Expiration: c.expiration_date ?? '',
-    'SDS URL': c.sds_url ?? '',
-    'Purchase URL': c.purchase_url ?? '',
-    Notes: c.notes ?? '',
+    'Chemical Name': c.name,
+    'CAS #': c.cas_number ?? '',
+    'Distributor': c.distributor ?? '',
+    'Container Size': c.container_size ?? '',
+    'Physical State': c.physical_state ?? '',
+    'Location': c.location ?? '',
+    '# of Carbons': c.carbon_count ?? '',
+    '# of Bottles': c.bottle_count ?? '',
+    'Storage Conditions': c.storage_conditions ?? '',
+    'Hazards': c.hazards ?? '',
+    'SDS Link': c.sds_url ?? '',
+    'Notes': c.notes ?? '',
   }))
 
   const wb = XLSX.utils.book_new()
