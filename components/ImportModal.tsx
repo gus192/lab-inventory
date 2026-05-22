@@ -191,8 +191,8 @@ export default function ImportModal({ onClose, onImport }: Props) {
                   <table className="text-xs w-full">
                     <thead className="bg-gray-50">
                       <tr>
-                        {['Name', 'CAS', 'Location', 'Qty', 'Unit', 'Supplier', 'Catalog #'].map(h => (
-                          <th key={h} className="px-3 py-2 text-left font-medium text-gray-600">{h}</th>
+                        {['Chemical Name', 'CAS #', 'Distributor', 'Container Size', 'Location', '# Bottles'].map(h => (
+                          <th key={h} className="px-3 py-2 text-left font-medium text-slate-600">{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -200,17 +200,16 @@ export default function ImportModal({ onClose, onImport }: Props) {
                       {previewRows.slice(0, 6).map((r, i) => (
                         <tr key={i} className="border-t">
                           <td className="px-3 py-1.5 font-medium">{r.name ?? ''}</td>
-                          <td className="px-3 py-1.5 text-gray-500 font-mono">{r.cas_number ?? ''}</td>
+                          <td className="px-3 py-1.5 text-slate-500 font-mono">{r.cas_number ?? ''}</td>
+                          <td className="px-3 py-1.5">{r.distributor ?? ''}</td>
+                          <td className="px-3 py-1.5">{r.container_size ?? ''}</td>
                           <td className="px-3 py-1.5">{r.location ?? ''}</td>
-                          <td className="px-3 py-1.5">{r.quantity ?? ''}</td>
-                          <td className="px-3 py-1.5">{r.unit ?? ''}</td>
-                          <td className="px-3 py-1.5">{r.supplier ?? ''}</td>
-                          <td className="px-3 py-1.5">{r.catalog_number ?? ''}</td>
+                          <td className="px-3 py-1.5">{r.bottle_count ?? ''}</td>
                         </tr>
                       ))}
                       {previewRows.length > 6 && (
                         <tr className="border-t">
-                          <td colSpan={7} className="px-3 py-1.5 text-gray-400 italic">
+                          <td colSpan={6} className="px-3 py-1.5 text-slate-400 italic">
                             …and {previewRows.length - 6} more
                           </td>
                         </tr>
