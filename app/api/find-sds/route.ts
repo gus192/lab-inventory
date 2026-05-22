@@ -2,34 +2,16 @@ import { NextResponse } from 'next/server'
 
 const PUBCHEM = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug'
 
-async function findSigmaSDS(cas: string): Promise<string | null> {
+async function getSdsForCas(cas: string): Promise<string> {
   try {
-    const res = await fetch(
-      `https://www.sigmaaldrich.com/api/2.0/products/search?query=${encodeURIComponent(cas)}&brand=SIAL&page=1&pageSize=3`,
-      {
-        headers: {
-          Accept: 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/120.0.0.0',
-        },
-      }
-    )
-    if (!res.ok) return null
-    const data = await res.json()
-    const productNumber = data?.results?.[0]?.productNumber ?? data?.results?.[0]?.product_number
-    if (productNumber) {
-      return `https://www.sigmaaldrich.com/deepweb/assets/sigmaaldrich/product/documents/${productNumber}_SDS_EN_US.pdf`
+    const res = await fetch(`${PUBCHEM}/compound/name/${encodeURIComponent(cas)}/cids/JSON`)
+    if (res.ok) {
+      const data = await res.json()
+      const cid = data?.IdentifierList?.CID?.[0]
+      if (cid) return `https://pubchem.ncbi.nlm.nih.gov/compound/${cid}#section=Safety-and-Hazards`
     }
   } catch { /* silent */ }
-  return null
-}
-
-async function getSdsForCas(cas: string): Promise<string> {
-  // 1. Try Sigma-Aldrich PDF
-  const sigma = await findSigmaSDS(cas)
-  if (sigma) return sigma
-
-  // 2. Fall back to Fisher search URL (reliable, returns actual SDS docs)
-  return `https://www.fishersci.com/us/en/catalog/search/sds?selectLang=EN&msdsKeyword=${encodeURIComponent(cas)}`
+  return `https://pubchem.ncbi.nlm.nih.gov/#query=${encodeURIComponent(cas)}`
 }
 
 // POST body: { cas_numbers: string[] }
