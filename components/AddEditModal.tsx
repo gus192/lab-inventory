@@ -148,7 +148,9 @@ export default function AddEditModal({ chemical, onClose, onSave }: Props) {
             </div>
             {lookupInfo && (
               <div className="mt-2 flex items-center gap-3 text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded-lg px-3 py-2">
-                <span className="text-teal-500">✓</span>
+                <svg className="w-4 h-4 text-teal-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
                 <span>Found on PubChem{lookupInfo.formula ? ` — ${lookupInfo.formula}` : ''}. CAS &amp; SDS auto-filled.</span>
                 <a href={lookupInfo.pubchem_url} target="_blank" rel="noopener noreferrer"
                   className="ml-auto font-medium hover:underline">View →</a>

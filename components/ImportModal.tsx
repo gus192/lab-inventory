@@ -106,12 +106,16 @@ export default function ImportModal({ onClose, onImport }: Props) {
           {step === 'upload' && (
             <>
               <div
-                className="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center cursor-pointer hover:border-teal-400 transition-colors"
+                className="border-2 border-dashed border-slate-200 rounded-xl p-10 text-center cursor-pointer hover:border-teal-400 hover:bg-teal-50/30 transition-colors"
                 onClick={() => fileRef.current?.click()}
               >
-                <div className="text-4xl mb-2">📂</div>
-                <p className="font-medium text-gray-700">Click to select a CSV or Excel file</p>
-                <p className="text-sm text-gray-400 mt-1">You'll be able to manually assign any unrecognized columns</p>
+                <div className="flex justify-center mb-3">
+                  <svg className="w-10 h-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                  </svg>
+                </div>
+                <p className="font-medium text-slate-700">Click to select a CSV or Excel file</p>
+                <p className="text-sm text-slate-400 mt-1">You can manually assign any unrecognized columns in the next step</p>
                 <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleFile} />
               </div>
               {parsing && <p className="text-center text-teal-600">Reading file…</p>}
@@ -124,7 +128,7 @@ export default function ImportModal({ onClose, onImport }: Props) {
             <>
               <p className="text-sm text-gray-600">
                 Found <strong>{headers.length}</strong> columns and <strong>{rawRows.length}</strong> rows.
-                Columns marked ✓ were auto-recognized. Assign any others using the dropdowns, or leave as "Skip".
+                Columns marked <strong>Auto</strong> were recognized automatically. Assign any others using the dropdowns, or leave as "Skip".
               </p>
 
               {!hasName && (
@@ -149,7 +153,7 @@ export default function ImportModal({ onClose, onImport }: Props) {
                         <tr key={i} className="border-t">
                           <td className="px-4 py-2.5">
                             <span className="font-medium">{header || <em className="text-gray-400">(empty)</em>}</span>
-                            {isAuto && <span className="ml-2 text-teal-500 text-xs">✓ auto</span>}
+                            {isAuto && <span className="ml-2 text-teal-600 text-xs font-medium bg-teal-50 border border-teal-100 px-1.5 py-0.5 rounded">Auto</span>}
                           </td>
                           <td className="px-4 py-2.5">
                             <select

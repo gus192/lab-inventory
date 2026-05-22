@@ -211,14 +211,14 @@ export default function ChemicalTable({ chemicals, onEdit, onDelete, onBulkDelet
                 <Th col="name" label="Chemical Name" className="min-w-[200px]" />
                 <Th col="cas_number" label="CAS #" />
                 <Th col="distributor" label="Distributor" />
-                <Th col="container_size" label="Size" />
-                <Th col="physical_state" label="State" />
+                <Th col="container_size" label="Container Size" />
+                <Th col="physical_state" label="Physical State" />
                 <Th col="location" label="Location" />
-                <Th col="carbon_count" label="Carbons" />
-                <Th col="bottle_count" label="Bottles" />
-                <Th col="storage_conditions" label="Storage" />
+                <Th col="carbon_count" label="# of Carbons" />
+                <Th col="bottle_count" label="# of Bottles" />
+                <Th col="storage_conditions" label="Storage Conditions" />
                 <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Hazards</th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">SDS</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">SDS Link</th>
                 <th className="px-3 py-3 w-16" />
               </tr>
             </thead>
