@@ -90,8 +90,14 @@ export default function ImportModal({ onClose, onImport }: Props) {
   }
 
   async function autoEnrich() {
-    const toEnrich = previewRows.filter(needsEnrich)
-    if (toEnrich.length === 0) return
+    // Record which row indices need enrichment before the async fetch so the
+    // results can be applied back by exact index — works correctly for duplicate names.
+    type EnrichSlot = { idx: number; cas_number?: string | null; name?: string | null }
+    const slots: EnrichSlot[] = []
+    previewRows.forEach((r, idx) => {
+      if (needsEnrich(r)) slots.push({ idx, cas_number: r.cas_number, name: r.name })
+    })
+    if (slots.length === 0) return
 
     setEnrichStatus('loading')
     try {
@@ -99,7 +105,7 @@ export default function ImportModal({ onClose, onImport }: Props) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chemicals: toEnrich.map(r => ({ cas_number: r.cas_number, name: r.name })),
+          chemicals: slots.map(({ cas_number, name }) => ({ cas_number, name })),
         }),
       })
       if (!res.ok) { setEnrichStatus('idle'); return }
@@ -112,26 +118,21 @@ export default function ImportModal({ onClose, onImport }: Props) {
         carbon_count?: number | null
       } | null> }
 
+      const updatedRows = [...previewRows]
       let filled = 0
-      let enrichIdx = 0
-
-      setPreviewRows(rows => rows.map(r => {
-        if (!needsEnrich(r)) return r
-
-        const data = enriched[enrichIdx++]
-        if (!data) return r
-
-        const updated = { ...r }
+      slots.forEach(({ idx }, ei) => {
+        const data = enriched[ei]
+        if (!data) return
+        const r = { ...updatedRows[idx] }
         let changed = false
-        if (!updated.sds_url && data.sds_url) { updated.sds_url = data.sds_url; changed = true }
-        if (!updated.hazards && data.hazards) { updated.hazards = data.hazards; changed = true }
-        if (!updated.storage_conditions && data.storage_conditions) { updated.storage_conditions = data.storage_conditions; changed = true }
-        if (!updated.physical_state && data.physical_state) { updated.physical_state = data.physical_state; changed = true }
-        if (updated.carbon_count == null && data.carbon_count != null) { updated.carbon_count = data.carbon_count; changed = true }
-        if (changed) filled++
-        return updated
-      }))
-
+        if (!r.sds_url && data.sds_url) { r.sds_url = data.sds_url; changed = true }
+        if (!r.hazards && data.hazards) { r.hazards = data.hazards; changed = true }
+        if (!r.storage_conditions && data.storage_conditions) { r.storage_conditions = data.storage_conditions; changed = true }
+        if (!r.physical_state && data.physical_state) { r.physical_state = data.physical_state; changed = true }
+        if (r.carbon_count == null && data.carbon_count != null) { r.carbon_count = data.carbon_count; changed = true }
+        if (changed) { updatedRows[idx] = r; filled++ }
+      })
+      setPreviewRows(updatedRows)
       setEnrichCount(filled)
       setEnrichStatus('done')
     } catch {
