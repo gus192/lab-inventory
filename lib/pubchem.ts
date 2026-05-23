@@ -7,6 +7,7 @@ export interface PubChemData {
   iupac_name: string | null
   molecular_formula: string | null
   carbon_count: number | null
+  physical_state: string | null
   sds_url: string
   pubchem_url: string
   hazards: string
@@ -25,10 +26,33 @@ async function pget(url: string) {
 
 function parseCarbons(formula: string | null | undefined): number | null {
   if (!formula) return null
-  // Match C at start of Hill-notation formula, not followed by lowercase (e.g. not Ca, Cl, Co)
   const m = formula.match(/^C(\d+)?(?![a-z])/)
   if (!m) return null
   return m[1] ? parseInt(m[1]) : 1
+}
+
+// Recursively search PubChem section tree for a heading
+function findSection(sections: any[], heading: string): any | null {
+  for (const section of sections) {
+    if (section.TOCHeading === heading) return section
+    if (Array.isArray(section.Section)) {
+      const found = findSection(section.Section, heading)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+// Collect all String values from a PubChem response object
+function collectStrings(obj: unknown): string {
+  if (!obj || typeof obj !== 'object') return ''
+  let text = ''
+  const o = obj as Record<string, unknown>
+  if (typeof o.String === 'string') text += ' ' + o.String
+  for (const val of Object.values(o)) {
+    if (val && typeof val === 'object') text += collectStrings(val)
+  }
+  return text
 }
 
 const PICTOGRAM_TO_HAZARD: Array<[string, string]> = [
@@ -46,19 +70,16 @@ const PICTOGRAM_TO_HAZARD: Array<[string, string]> = [
 function parseGHSHazards(ghsData: unknown): string {
   const hazards: string[] = []
   try {
-    const sections = (ghsData as any)?.Record?.Section ?? []
-    for (const section of sections) {
-      if (section.TOCHeading !== 'GHS Classification') continue
-      for (const sub of section.Section ?? []) {
-        if (sub.TOCHeading !== 'Pictogram(s)') continue
-        for (const info of sub.Information ?? []) {
-          for (const swm of info.Value?.StringWithMarkup ?? []) {
-            const text = (swm.String ?? '').toLowerCase()
-            for (const [key, hazard] of PICTOGRAM_TO_HAZARD) {
-              if (text.includes(key) && !hazards.includes(hazard)) {
-                hazards.push(hazard)
-              }
-            }
+    const topSections = (ghsData as any)?.Record?.Section ?? []
+    // PubChem nests Pictogram(s) inside Chemical Safety > GHS Classification
+    const pictogramSection = findSection(topSections, 'Pictogram(s)')
+    if (!pictogramSection) return ''
+    for (const info of pictogramSection.Information ?? []) {
+      for (const swm of info.Value?.StringWithMarkup ?? []) {
+        const text = (swm.String ?? '').toLowerCase()
+        for (const [key, hazard] of PICTOGRAM_TO_HAZARD) {
+          if (text.includes(key) && !hazards.includes(hazard)) {
+            hazards.push(hazard)
           }
         }
       }
@@ -91,18 +112,33 @@ const STORAGE_MAP: Array<[string, string]> = [
 
 function parseStorageConditions(storageData: unknown): string | null {
   try {
-    let text = ''
-    const sections = (storageData as any)?.Record?.Section ?? []
-    for (const section of sections) {
-      for (const info of section.Information ?? []) {
-        for (const swm of info.Value?.StringWithMarkup ?? []) {
-          text += ' ' + (swm.String ?? '')
-        }
-      }
-    }
-    const lower = text.toLowerCase()
+    // Collect all text from the response (storage conditions section is nested)
+    const text = collectStrings(storageData).toLowerCase()
     for (const [key, val] of STORAGE_MAP) {
-      if (lower.includes(key)) return val
+      if (text.includes(key)) return val
+    }
+  } catch { /* silent */ }
+  return null
+}
+
+const PHYSICAL_STATE_MAP: Array<[string, string]> = [
+  ['viscous', 'Viscous liquid'],
+  ['oily liquid', 'Viscous liquid'],
+  ['liquid', 'Liquid'],
+  ['powder', 'Powder'],
+  ['crystalline solid', 'Solid'],
+  ['white solid', 'Solid'],
+  ['solid', 'Solid'],
+  ['crystal', 'Solid'],
+  ['gas', 'Gas'],
+  ['gel', 'Gel'],
+]
+
+function parsePhysicalState(physData: unknown): string | null {
+  try {
+    const text = collectStrings(physData).toLowerCase()
+    for (const [key, val] of PHYSICAL_STATE_MAP) {
+      if (text.includes(key)) return val
     }
   } catch { /* silent */ }
   return null
@@ -110,11 +146,12 @@ function parseStorageConditions(storageData: unknown): string | null {
 
 export async function enrichByCid(cid: number): Promise<PubChemData | null> {
   try {
-    const [propsData, synData, ghsData, storageData] = await Promise.all([
+    const [propsData, synData, ghsData, storageData, physData] = await Promise.all([
       pget(`${PUBCHEM}/compound/cid/${cid}/property/IUPACName,MolecularFormula,MolecularWeight/JSON`),
       pget(`${PUBCHEM}/compound/cid/${cid}/synonyms/JSON`),
       pget(`${PUBCHEM_VIEW}/data/compound/${cid}/JSON?heading=GHS+Classification`),
       pget(`${PUBCHEM_VIEW}/data/compound/${cid}/JSON?heading=Storage+Conditions`),
+      pget(`${PUBCHEM_VIEW}/data/compound/${cid}/JSON?heading=Physical+Description`),
     ])
 
     const props = propsData?.PropertyTable?.Properties?.[0] ?? {}
@@ -128,6 +165,7 @@ export async function enrichByCid(cid: number): Promise<PubChemData | null> {
       iupac_name: props.IUPACName ?? null,
       molecular_formula: formula,
       carbon_count: parseCarbons(formula),
+      physical_state: parsePhysicalState(physData),
       sds_url: `https://pubchem.ncbi.nlm.nih.gov/compound/${cid}#section=Safety-and-Hazards`,
       pubchem_url: `https://pubchem.ncbi.nlm.nih.gov/compound/${cid}`,
       hazards: parseGHSHazards(ghsData),

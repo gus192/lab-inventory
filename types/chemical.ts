@@ -41,6 +41,21 @@ export const STORAGE_CONDITIONS = [
   'Corrosives cabinet',
 ]
 
+export const COMMON_DISTRIBUTORS = [
+  'Sigma-Aldrich',
+  'TCI America',
+  'Fisher Scientific',
+  'Alfa Aesar',
+  'Acros Organics',
+  'Strem Chemicals',
+  'VWR',
+  'Oakwood Chemical',
+  'Combi-Blocks',
+  'Santa Cruz Biotechnology',
+  'MP Biomedicals',
+  'Cayman Chemical',
+]
+
 export const HAZARD_OPTIONS = [
   'Flammable', 'Corrosive', 'Irritant', 'Toxic', 'Reactive',
   'Oxidizer', 'Moisture sensitive', 'Air sensitive', 'Environmental hazard',

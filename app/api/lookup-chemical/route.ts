@@ -16,6 +16,7 @@ export async function GET(req: Request) {
       iupac_name: data.iupac_name,
       molecular_formula: data.molecular_formula,
       carbon_count: data.carbon_count,
+      physical_state: data.physical_state,
       hazards: data.hazards || null,
       storage_conditions: data.storage_conditions,
       pubchem_url: data.pubchem_url,

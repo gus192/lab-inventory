@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import type { Chemical, ChemicalInsert } from '@/types/chemical'
 import {
-  CONTAINER_SIZES, PHYSICAL_STATES,
+  CONTAINER_SIZES, PHYSICAL_STATES, COMMON_DISTRIBUTORS,
   STORAGE_CONDITIONS, HAZARD_OPTIONS,
 } from '@/types/chemical'
 
@@ -18,7 +18,7 @@ interface Props {
 const EMPTY: Partial<ChemicalInsert> = {
   name: '', cas_number: '', distributor: '', container_size: '',
   physical_state: '', location: '', carbon_count: undefined,
-  bottle_count: undefined, storage_conditions: '', hazards: '', sds_url: '', notes: '',
+  bottle_count: 1, storage_conditions: '', hazards: '', sds_url: '', notes: '',
   added_by: '',
 }
 
@@ -29,6 +29,7 @@ export default function AddEditModal({ chemical, onClose, onSave, existingLocati
   const [lookupInfo, setLookupInfo] = useState<{ formula?: string; pubchem_url?: string; filledFields?: string[] } | null>(null)
   const [lookupError, setLookupError] = useState('')
   const [customSize, setCustomSize] = useState(false)
+  const [customDistributor, setCustomDistributor] = useState(false)
   const [selectedHazards, setSelectedHazards] = useState<string[]>([])
 
   useEffect(() => {
@@ -51,11 +52,14 @@ export default function AddEditModal({ chemical, onClose, onSave, existingLocati
         added_by: chemical.added_by ?? '',
       })
       setCustomSize(!CONTAINER_SIZES.includes(chemical.container_size ?? ''))
+      const knownDistributors = [...COMMON_DISTRIBUTORS, ...existingDistributors]
+      setCustomDistributor(!!chemical.distributor && !knownDistributors.includes(chemical.distributor))
     } else {
       const savedBy = typeof window !== 'undefined' ? (localStorage.getItem('lab_added_by') ?? '') : ''
       setForm({ ...EMPTY, added_by: savedBy })
       setSelectedHazards([])
       setCustomSize(false)
+      setCustomDistributor(false)
     }
   }, [chemical])
 
@@ -101,6 +105,10 @@ export default function AddEditModal({ chemical, onClose, onSave, existingLocati
       if (!form.storage_conditions && data.storage_conditions) {
         set('storage_conditions', data.storage_conditions)
         filled.push('storage')
+      }
+      if (!form.physical_state && data.physical_state) {
+        set('physical_state', data.physical_state)
+        filled.push('physical state')
       }
       if (form.carbon_count == null && data.carbon_count != null) {
         set('carbon_count', data.carbon_count)
@@ -204,11 +212,26 @@ export default function AddEditModal({ chemical, onClose, onSave, existingLocati
             </div>
             <div>
               <label className="label">Distributor</label>
-              <input className="input" list="distributors-list" value={form.distributor ?? ''}
-                onChange={e => set('distributor', e.target.value)} placeholder="e.g. Sigma-Aldrich" />
-              <datalist id="distributors-list">
-                {existingDistributors.map(d => <option key={d} value={d} />)}
-              </datalist>
+              {customDistributor ? (
+                <div className="flex gap-2">
+                  <input className="input" value={form.distributor ?? ''}
+                    onChange={e => set('distributor', e.target.value)} placeholder="Enter distributor name" />
+                  <button type="button" onClick={() => { setCustomDistributor(false); set('distributor', '') }}
+                    className="btn-ghost px-2 text-xs">List</button>
+                </div>
+              ) : (
+                <select className="input" value={form.distributor ?? ''}
+                  onChange={e => {
+                    if (e.target.value === '__other__') { setCustomDistributor(true); set('distributor', '') }
+                    else set('distributor', e.target.value)
+                  }}>
+                  <option value="">— Select —</option>
+                  {[...new Set([...COMMON_DISTRIBUTORS, ...existingDistributors])].map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                  <option value="__other__">Other…</option>
+                </select>
+              )}
             </div>
           </div>
 
