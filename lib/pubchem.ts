@@ -1,3 +1,5 @@
+import { cleanChemicalName } from './normalizeChemicalName'
+
 const PUBCHEM = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug'
 const PUBCHEM_VIEW = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug_view'
 
@@ -10,7 +12,7 @@ export interface PubChemData {
   physical_state: string | null
   sds_url: string
   pubchem_url: string
-  hazards: string
+  hazards: string | null
   storage_conditions: string | null
 }
 
@@ -78,26 +80,42 @@ const HAZARD_KEYWORDS: Array<[string, string]> = [
   ['flame over circle', 'Oxidizer'],
   ['oxidizing', 'Oxidizer'],
   ['oxidising', 'Oxidizer'],
-  ['flammable', 'Flammable'],   // H225/H226 statements AND "Flame" pictogram description
-  ['flame', 'Flammable'],       // fallback: pictogram named "Flame"
+  ['flammable', 'Flammable'],
+  ['combustible', 'Flammable'],
+  ['flame', 'Flammable'],
   ['exploding bomb', 'Reactive'],
   ['explosive', 'Reactive'],
   ['self-react', 'Reactive'],
+  ['organic peroxide', 'Reactive'],
   ['corrosion', 'Corrosive'],
   ['corrosive', 'Corrosive'],
   ['skull', 'Toxic'],
   ['acute tox', 'Toxic'],
   ['fatal', 'Toxic'],
+  ['toxic', 'Toxic'],
   ['exclamation mark', 'Irritant'],
   ['irritant', 'Irritant'],
   ['irritat', 'Irritant'],
   ['harmful', 'Irritant'],
+  ['sensitiz', 'Irritant'],
+  ['sensitiser', 'Irritant'],
+  ['narcotic', 'Irritant'],
+  ['health hazard', 'Toxic'],
+  ['carcinogen', 'Toxic'],
+  ['mutagen', 'Toxic'],
+  ['reproduct', 'Toxic'],
+  ['aspiration', 'Toxic'],
   ['environment', 'Environmental hazard'],
   ['aquatic', 'Environmental hazard'],
+  ['moisture sensitive', 'Moisture sensitive'],
+  ['moisture-sensitive', 'Moisture sensitive'],
+  ['air sensitive', 'Air sensitive'],
+  ['air-sensitive', 'Air sensitive'],
+  ['pyrophoric', 'Air sensitive'],
 ]
 
-function parseGHSHazards(ghsData: unknown): string {
-  if (!ghsData) return ''
+function parseGHSHazards(ghsData: unknown): string | null {
+  if (!ghsData) return null
   const hazards: string[] = []
   try {
     const text = collectStrings(ghsData).toLowerCase()
@@ -107,7 +125,8 @@ function parseGHSHazards(ghsData: unknown): string {
       }
     }
   } catch { /* silent */ }
-  return hazards.join(', ')
+  // Return "None" (not empty) so the field is considered filled and won't re-trigger enrichment
+  return hazards.length > 0 ? hazards.join(', ') : 'None'
 }
 
 const STORAGE_MAP: Array<[string, string]> = [
@@ -230,8 +249,18 @@ export async function enrichByCid(cid: number): Promise<PubChemData | null> {
 }
 
 export async function enrichByQuery(query: string): Promise<PubChemData | null> {
-  const cidData = await pget(`${PUBCHEM}/compound/name/${encodeURIComponent(query)}/cids/JSON`)
-  const cid: number = cidData?.IdentifierList?.CID?.[0]
+  let cidData = await pget(`${PUBCHEM}/compound/name/${encodeURIComponent(query)}/cids/JSON`)
+  let cid: number = cidData?.IdentifierList?.CID?.[0]
+
+  // If not found, retry with grade/purity qualifiers stripped (e.g. "Xylenes, ACS grade" → "Xylenes")
+  if (!cid) {
+    const cleaned = cleanChemicalName(query)
+    if (cleaned && cleaned !== query) {
+      cidData = await pget(`${PUBCHEM}/compound/name/${encodeURIComponent(cleaned)}/cids/JSON`)
+      cid = cidData?.IdentifierList?.CID?.[0]
+    }
+  }
+
   if (!cid) return null
   return enrichByCid(cid)
 }

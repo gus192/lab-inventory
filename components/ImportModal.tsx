@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import type { ChemicalInsert } from '@/types/chemical'
 import { COLUMN_LABELS } from '@/types/chemical'
 import { applyMappings } from '@/lib/mapRows'
+import { cleanChemicalName } from '@/lib/normalizeChemicalName'
 
 interface Props {
   onClose: () => void
@@ -295,6 +296,30 @@ export default function ImportModal({ onClose, onImport }: Props) {
                 Found <strong>{previewRows.length}</strong> chemical{previewRows.length !== 1 ? 's' : ''} ready to import.
                 {' '}Chemicals without a storage condition will default to <strong>Room temperature</strong> (or Refrigerator if location mentions &ldquo;fridge&rdquo;).
               </div>
+
+              {/* Normalize names */}
+              {(() => {
+                const dirty = previewRows.filter(r => r.name && cleanChemicalName(r.name) !== r.name)
+                if (dirty.length === 0) return null
+                return (
+                  <div className="flex items-center justify-between gap-3 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5 text-sm">
+                    <span className="text-blue-800">
+                      <strong>{dirty.length}</strong> name{dirty.length !== 1 ? 's have' : ' has'} grade/purity qualifiers
+                      {' '}(e.g. <em>"{dirty[0].name}"</em>).
+                    </span>
+                    <button
+                      className="btn-secondary text-xs py-1 px-3 whitespace-nowrap"
+                      onClick={() => setPreviewRows(rows => rows.map(r => {
+                        if (!r.name) return r
+                        const cleaned = cleanChemicalName(r.name)
+                        return cleaned !== r.name ? { ...r, name: cleaned } : r
+                      }))}
+                    >
+                      Normalize Names
+                    </button>
+                  </div>
+                )
+              })()}
 
               {/* Added by */}
               <div className="flex items-center gap-3">
