@@ -15,18 +15,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'chemicals array required' }, { status: 400 })
   }
 
-  const limited = chemicals.slice(0, 100)
-  const enriched = await Promise.all(
-    limited.map(async (c) => {
-      const query = c.cas_number?.trim() || c.name?.trim()
-      if (!query) return null
-      try {
-        return await enrichByQuery(query)
-      } catch {
-        return null
-      }
-    })
-  )
+  const limited = chemicals.slice(0, 150)
+  const enriched = []
+
+  // Sequential processing to respect PubChem's 5 req/sec rate limit
+  for (const c of limited) {
+    const query = c.cas_number?.trim() || c.name?.trim()
+    if (!query) {
+      enriched.push(null)
+      continue
+    }
+    try {
+      enriched.push(await enrichByQuery(query))
+    } catch {
+      enriched.push(null)
+    }
+    await new Promise(r => setTimeout(r, 220))
+  }
 
   return NextResponse.json({ enriched })
 }

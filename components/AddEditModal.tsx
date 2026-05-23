@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import type { Chemical, ChemicalInsert } from '@/types/chemical'
 import {
   CONTAINER_SIZES, PHYSICAL_STATES, COMMON_DISTRIBUTORS,
-  STORAGE_CONDITIONS, HAZARD_OPTIONS,
+  STORAGE_CONDITIONS, HAZARD_OPTIONS, normalizeDistributor,
 } from '@/types/chemical'
 
 interface Props {
@@ -131,6 +131,9 @@ export default function AddEditModal({ chemical, onClose, onSave, existingLocati
     e.preventDefault()
     setSaving(true)
     const payload = { ...form }
+    if (payload.distributor) {
+      payload.distributor = normalizeDistributor(payload.distributor) ?? undefined
+    }
     for (const k of Object.keys(payload) as (keyof ChemicalInsert)[]) {
       if (payload[k] === '') (payload as Record<string, unknown>)[k] = null
     }

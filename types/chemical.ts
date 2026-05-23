@@ -61,6 +61,26 @@ export const HAZARD_OPTIONS = [
   'Oxidizer', 'Moisture sensitive', 'Air sensitive', 'Environmental hazard',
 ]
 
+export function normalizeDistributor(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+
+  // Exact case-insensitive match → canonical spelling
+  const exact = COMMON_DISTRIBUTORS.find(d => d.toLowerCase() === trimmed.toLowerCase())
+  if (exact) return exact
+
+  // Fuzzy: strip hyphens/spaces so "sigma aldrich" matches "Sigma-Aldrich"
+  const fuzzy = trimmed.toLowerCase().replace(/[-\s]/g, '')
+  const fuzzyMatch = COMMON_DISTRIBUTORS.find(d =>
+    d.toLowerCase().replace(/[-\s]/g, '') === fuzzy
+  )
+  if (fuzzyMatch) return fuzzyMatch
+
+  // Unknown distributor → Title Case each word
+  return trimmed.replace(/\b\w+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+}
+
 export const COLUMN_LABELS: Record<keyof ChemicalInsert, string> = {
   name: 'Chemical Name',
   cas_number: 'CAS #',

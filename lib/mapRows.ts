@@ -1,4 +1,5 @@
 import type { ChemicalInsert } from '@/types/chemical'
+import { normalizeDistributor } from '@/types/chemical'
 
 export function applyMappings(
   headers: string[],
@@ -21,6 +22,8 @@ export function applyMappings(
       if (field === 'carbon_count' || field === 'bottle_count') {
         const n = parseInt(String(val), 10)
         if (!isNaN(n)) entry[field] = n
+      } else if (field === 'distributor') {
+        entry[field] = normalizeDistributor(String(val)) ?? undefined
       } else {
         ;(entry as Record<string, unknown>)[field] = String(val).trim()
       }

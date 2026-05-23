@@ -78,11 +78,13 @@ export default function ImportModal({ onClose, onImport }: Props) {
     setStep('preview')
   }
 
+  function needsEnrich(r: Partial<ChemicalInsert>) {
+    return !!(r.cas_number || r.name) &&
+      (!r.sds_url || !r.hazards || !r.storage_conditions || !r.physical_state || r.carbon_count == null)
+  }
+
   async function autoEnrich() {
-    const toEnrich = previewRows.filter(r =>
-      (r.cas_number || r.name) &&
-      (!r.sds_url || !r.hazards || !r.storage_conditions || r.carbon_count == null)
-    )
+    const toEnrich = previewRows.filter(needsEnrich)
     if (toEnrich.length === 0) return
 
     setEnrichStatus('loading')
@@ -100,6 +102,7 @@ export default function ImportModal({ onClose, onImport }: Props) {
         sds_url?: string
         hazards?: string
         storage_conditions?: string | null
+        physical_state?: string | null
         carbon_count?: number | null
       } | null> }
 
@@ -107,9 +110,7 @@ export default function ImportModal({ onClose, onImport }: Props) {
       let enrichIdx = 0
 
       setPreviewRows(rows => rows.map(r => {
-        const needsEnrich = (r.cas_number || r.name) &&
-          (!r.sds_url || !r.hazards || !r.storage_conditions || r.carbon_count == null)
-        if (!needsEnrich) return r
+        if (!needsEnrich(r)) return r
 
         const data = enriched[enrichIdx++]
         if (!data) return r
@@ -119,6 +120,7 @@ export default function ImportModal({ onClose, onImport }: Props) {
         if (!updated.sds_url && data.sds_url) { updated.sds_url = data.sds_url; changed = true }
         if (!updated.hazards && data.hazards) { updated.hazards = data.hazards; changed = true }
         if (!updated.storage_conditions && data.storage_conditions) { updated.storage_conditions = data.storage_conditions; changed = true }
+        if (!updated.physical_state && data.physical_state) { updated.physical_state = data.physical_state; changed = true }
         if (updated.carbon_count == null && data.carbon_count != null) { updated.carbon_count = data.carbon_count; changed = true }
         if (changed) filled++
         return updated
@@ -264,10 +266,7 @@ export default function ImportModal({ onClose, onImport }: Props) {
 
               {/* Auto-enrich from PubChem */}
               {(() => {
-                const missingCount = previewRows.filter(r =>
-                  (r.cas_number || r.name) &&
-                  (!r.sds_url || !r.hazards || !r.storage_conditions || r.carbon_count == null)
-                ).length
+                const missingCount = previewRows.filter(needsEnrich).length
 
                 if (enrichStatus === 'done') {
                   return (
