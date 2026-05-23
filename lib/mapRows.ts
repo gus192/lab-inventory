@@ -1,5 +1,5 @@
 import type { ChemicalInsert } from '@/types/chemical'
-import { normalizeDistributor } from '@/types/chemical'
+import { normalizeDistributor, normalizePhysicalState } from '@/types/chemical'
 
 export function applyMappings(
   headers: string[],
@@ -24,6 +24,8 @@ export function applyMappings(
         if (!isNaN(n)) entry[field] = n
       } else if (field === 'distributor') {
         entry[field] = normalizeDistributor(String(val)) ?? undefined
+      } else if (field === 'physical_state') {
+        entry[field] = normalizePhysicalState(String(val)) ?? undefined
       } else {
         ;(entry as Record<string, unknown>)[field] = String(val).trim()
       }

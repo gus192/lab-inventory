@@ -25,9 +25,9 @@ async function pget(url: string) {
 }
 
 function parseCarbons(formula: string | null | undefined): number | null {
-  if (!formula) return null
+  if (!formula) return null        // unknown — no formula
   const m = formula.match(/^C(\d+)?(?![a-z])/)
-  if (!m) return null
+  if (!m) return 0                 // formula exists but no C = 0 carbons
   return m[1] ? parseInt(m[1]) : 1
 }
 
@@ -113,17 +113,37 @@ function parseStorageConditions(storageData: unknown): string | null {
   return null
 }
 
+// Order matters: more specific entries before broader overlapping ones
 const PHYSICAL_STATE_MAP: Array<[string, string]> = [
   ['viscous', 'Viscous liquid'],
-  ['oily liquid', 'Viscous liquid'],
-  ['liquid', 'Liquid'],
-  ['powder', 'Powder'],
-  ['crystalline', 'Solid'],
-  ['white solid', 'Solid'],
-  ['solid', 'Solid'],
-  ['crystal', 'Solid'],
-  ['gas', 'Gas'],
+  ['syrupy', 'Viscous liquid'],
+  ['syrup', 'Viscous liquid'],
+  ['oily', 'Viscous liquid'],
+  ['resinous', 'Viscous liquid'],
+  ['powder', 'Powder'],       // before "crystalline" and "solid"
+  ['granular', 'Powder'],
+  ['granule', 'Powder'],
+  ['flour', 'Powder'],
+  ['dust', 'Powder'],
   ['gel', 'Gel'],
+  ['paste', 'Gel'],
+  ['jelly', 'Gel'],
+  ['gas', 'Gas'],
+  ['vapor', 'Gas'],
+  ['vapour', 'Gas'],
+  ['gaseous', 'Gas'],
+  ['liquid', 'Liquid'],       // after viscous/gel checks
+  ['solution', 'Liquid'],
+  ['crystalline', 'Solid'],   // after powder check
+  ['crystal', 'Solid'],
+  ['solid', 'Solid'],
+  ['waxy', 'Solid'],
+  ['wax', 'Solid'],
+  ['pellet', 'Solid'],
+  ['flake', 'Solid'],
+  ['needle', 'Solid'],
+  ['prism', 'Solid'],
+  ['glassy', 'Solid'],
 ]
 
 function parsePhysicalState(physData: unknown): string | null {

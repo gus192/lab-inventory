@@ -61,6 +61,27 @@ export const HAZARD_OPTIONS = [
   'Oxidizer', 'Moisture sensitive', 'Air sensitive', 'Environmental hazard',
 ]
 
+export function normalizePhysicalState(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+
+  // Exact case-insensitive match → canonical spelling
+  const exact = PHYSICAL_STATES.find(s => s.toLowerCase() === trimmed.toLowerCase())
+  if (exact) return exact
+
+  // Keyword match for free-text descriptions (order matters)
+  const lower = trimmed.toLowerCase()
+  if (lower.includes('viscous') || lower.includes('syrup') || lower.includes('oily')) return 'Viscous liquid'
+  if (lower.includes('powder') || lower.includes('granul') || lower.includes('dust')) return 'Powder'
+  if (lower.includes('gel') || lower.includes('paste') || lower.includes('jelly')) return 'Gel'
+  if (lower.includes('gas') || lower.includes('vapor') || lower.includes('vapour')) return 'Gas'
+  if (lower.includes('liquid') || lower.includes('liq.') || lower.includes('solution') || lower.includes(' oil')) return 'Liquid'
+  if (lower.includes('solid') || lower.includes('crystal') || lower.includes('wax') || lower.includes('pellet') || lower.includes('flake')) return 'Solid'
+
+  return null
+}
+
 export function normalizeDistributor(raw: string | null | undefined): string | null {
   if (!raw) return null
   const trimmed = raw.trim()
