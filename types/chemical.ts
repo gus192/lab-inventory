@@ -12,11 +12,14 @@ export interface Chemical {
   hazards: string | null
   sds_url: string | null
   notes: string | null
+  added_by: string | null
+  added_at: string | null
+  deleted_at: string | null
   created_at: string
   updated_at: string
 }
 
-export type ChemicalInsert = Omit<Chemical, 'id' | 'created_at' | 'updated_at'>
+export type ChemicalInsert = Omit<Chemical, 'id' | 'created_at' | 'updated_at' | 'deleted_at' | 'added_at'>
 
 export const CONTAINER_SIZES = [
   '1 mL', '5 mL', '10 mL', '25 mL', '50 mL', '100 mL', '250 mL', '500 mL', '1 L', '2 L', '4 L',
@@ -56,4 +59,5 @@ export const COLUMN_LABELS: Record<keyof ChemicalInsert, string> = {
   hazards: 'Hazards',
   sds_url: 'SDS Link',
   notes: 'Notes',
+  added_by: 'Added By',
 }

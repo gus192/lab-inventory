@@ -25,6 +25,12 @@ const HAZARD_COLORS: Record<string, string> = {
   'Air sensitive': 'bg-sky-50 text-sky-700 border-sky-200',
 }
 
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return '—'
+  const d = new Date(dateStr)
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 export default function ChemicalTable({ chemicals, onEdit, onDelete, onBulkDelete, onExportSelected }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('location')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -50,7 +56,8 @@ export default function ChemicalTable({ chemicals, onEdit, onDelete, onBulkDelet
           (c.distributor ?? '').toLowerCase().includes(q) ||
           (c.location ?? '').toLowerCase().includes(q) ||
           (c.hazards ?? '').toLowerCase().includes(q) ||
-          (c.physical_state ?? '').toLowerCase().includes(q)
+          (c.physical_state ?? '').toLowerCase().includes(q) ||
+          (c.added_by ?? '').toLowerCase().includes(q)
         )
       })
       .sort((a, b) => {
@@ -218,14 +225,16 @@ export default function ChemicalTable({ chemicals, onEdit, onDelete, onBulkDelet
                 <Th col="bottle_count" label="# of Bottles" />
                 <Th col="storage_conditions" label="Storage Conditions" />
                 <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Hazards</th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">SDS Link</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">SDS</th>
+                <Th col="added_by" label="Added By" />
+                <Th col="added_at" label="Date Added" />
                 <th className="px-3 py-3 w-16" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={13} className="px-4 py-12 text-center text-slate-400 text-sm">
+                  <td colSpan={15} className="px-4 py-12 text-center text-slate-400 text-sm">
                     {chemicals.length === 0
                       ? 'No chemicals yet — add one or import a spreadsheet.'
                       : 'No results match your search.'}
@@ -301,6 +310,12 @@ export default function ChemicalTable({ chemicals, onEdit, onDelete, onBulkDelet
                         </svg>
                       </a>
                     ) : '—'}
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">
+                    {c.added_by ?? '—'}
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-slate-400 whitespace-nowrap">
+                    {formatDate(c.added_at)}
                   </td>
                   <td className="px-3 py-2.5 text-right">
                     <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 justify-end transition-opacity">

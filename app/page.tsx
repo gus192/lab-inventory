@@ -5,6 +5,7 @@ import type { Chemical, ChemicalInsert } from '@/types/chemical'
 import ChemicalTable from '@/components/ChemicalTable'
 import AddEditModal from '@/components/AddEditModal'
 import ImportModal from '@/components/ImportModal'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 type Modal = 'add' | 'edit' | 'import' | null
@@ -158,6 +159,18 @@ export default function HomePage() {
                 </div>
               )}
             </div>
+
+            <div className="w-px h-5 bg-slate-700 mx-1" />
+
+            <Link href="/deleted"
+              className="btn text-xs py-1.5 px-3 text-slate-500 hover:text-slate-300 hover:bg-slate-800">
+              Deleted
+            </Link>
+
+            <Link href="/backup"
+              className="btn text-xs py-1.5 px-3 text-slate-500 hover:text-slate-300 hover:bg-slate-800">
+              Backups
+            </Link>
 
             <div className="w-px h-5 bg-slate-700 mx-1" />
 

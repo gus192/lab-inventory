@@ -19,13 +19,14 @@ const EMPTY: Partial<ChemicalInsert> = {
   name: '', cas_number: '', distributor: '', container_size: '',
   physical_state: '', location: '', carbon_count: undefined,
   bottle_count: undefined, storage_conditions: '', hazards: '', sds_url: '', notes: '',
+  added_by: '',
 }
 
 export default function AddEditModal({ chemical, onClose, onSave, existingLocations = [], existingDistributors = [] }: Props) {
   const [form, setForm] = useState<Partial<ChemicalInsert>>(EMPTY)
   const [saving, setSaving] = useState(false)
   const [lookupLoading, setLookupLoading] = useState(false)
-  const [lookupInfo, setLookupInfo] = useState<{ formula?: string; pubchem_url?: string } | null>(null)
+  const [lookupInfo, setLookupInfo] = useState<{ formula?: string; pubchem_url?: string; filledFields?: string[] } | null>(null)
   const [lookupError, setLookupError] = useState('')
   const [customSize, setCustomSize] = useState(false)
   const [selectedHazards, setSelectedHazards] = useState<string[]>([])
@@ -47,10 +48,12 @@ export default function AddEditModal({ chemical, onClose, onSave, existingLocati
         hazards: chemical.hazards ?? '',
         sds_url: chemical.sds_url ?? '',
         notes: chemical.notes ?? '',
+        added_by: chemical.added_by ?? '',
       })
       setCustomSize(!CONTAINER_SIZES.includes(chemical.container_size ?? ''))
     } else {
-      setForm(EMPTY)
+      const savedBy = typeof window !== 'undefined' ? (localStorage.getItem('lab_added_by') ?? '') : ''
+      setForm({ ...EMPTY, added_by: savedBy })
       setSelectedHazards([])
       setCustomSize(false)
     }
@@ -58,6 +61,9 @@ export default function AddEditModal({ chemical, onClose, onSave, existingLocati
 
   function set(field: keyof ChemicalInsert, value: string | number | null) {
     setForm(f => ({ ...f, [field]: value }))
+    if (field === 'added_by' && typeof value === 'string') {
+      localStorage.setItem('lab_added_by', value)
+    }
   }
 
   function toggleHazard(h: string) {
@@ -82,9 +88,30 @@ export default function AddEditModal({ chemical, onClose, onSave, existingLocati
         return
       }
       const data = await res.json()
-      setLookupInfo({ formula: data.molecular_formula, pubchem_url: data.pubchem_url })
-      if (!form.cas_number && data.cas_number) set('cas_number', data.cas_number)
-      if (!form.sds_url && data.sds_url) set('sds_url', data.sds_url)
+      const filled: string[] = []
+
+      if (!form.cas_number && data.cas_number) { set('cas_number', data.cas_number); filled.push('CAS') }
+      if (!form.sds_url && data.sds_url) { set('sds_url', data.sds_url); filled.push('SDS') }
+      if (!form.hazards && data.hazards) {
+        const h = (data.hazards as string).split(', ').filter(Boolean)
+        setSelectedHazards(h)
+        set('hazards', data.hazards)
+        filled.push('hazards')
+      }
+      if (!form.storage_conditions && data.storage_conditions) {
+        set('storage_conditions', data.storage_conditions)
+        filled.push('storage')
+      }
+      if (form.carbon_count == null && data.carbon_count != null) {
+        set('carbon_count', data.carbon_count)
+        filled.push('carbons')
+      }
+
+      setLookupInfo({
+        formula: data.molecular_formula,
+        pubchem_url: data.pubchem_url,
+        filledFields: filled,
+      })
     } catch {
       setLookupError('Network error')
     } finally {
@@ -153,7 +180,12 @@ export default function AddEditModal({ chemical, onClose, onSave, existingLocati
                 <svg className="w-4 h-4 text-teal-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                 </svg>
-                <span>Found on PubChem{lookupInfo.formula ? ` — ${lookupInfo.formula}` : ''}. CAS &amp; SDS auto-filled.</span>
+                <span>
+                  Found on PubChem{lookupInfo.formula ? ` — ${lookupInfo.formula}` : ''}.
+                  {lookupInfo.filledFields && lookupInfo.filledFields.length > 0
+                    ? ` Auto-filled: ${lookupInfo.filledFields.join(', ')}.`
+                    : ' All fields already filled.'}
+                </span>
                 <a href={lookupInfo.pubchem_url} target="_blank" rel="noopener noreferrer"
                   className="ml-auto font-medium hover:underline">View →</a>
               </div>
@@ -290,11 +322,19 @@ export default function AddEditModal({ chemical, onClose, onSave, existingLocati
               placeholder="Paste SDS URL or use Look up above" />
           </div>
 
-          {/* Notes */}
-          <div>
-            <label className="label">Notes</label>
-            <textarea className="input resize-none" rows={2} value={form.notes ?? ''}
-              onChange={e => set('notes', e.target.value)} />
+          {/* Added By + Notes */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Added By</label>
+              <input className="input" value={form.added_by ?? ''}
+                onChange={e => set('added_by', e.target.value)}
+                placeholder="Your name" />
+            </div>
+            <div>
+              <label className="label">Notes</label>
+              <input className="input" value={form.notes ?? ''}
+                onChange={e => set('notes', e.target.value)} />
+            </div>
           </div>
         </div>
 

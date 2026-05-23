@@ -11,7 +11,7 @@ interface Props {
 }
 
 type Step = 'upload' | 'map' | 'preview'
-type SdsStatus = 'idle' | 'loading' | 'done'
+type EnrichStatus = 'idle' | 'loading' | 'done'
 
 const FIELD_OPTIONS: Array<{ value: keyof ChemicalInsert | ''; label: string }> = [
   { value: '', label: '— Skip —' },
@@ -27,10 +27,11 @@ export default function ImportModal({ onClose, onImport }: Props) {
   const [rawRows, setRawRows] = useState<(string | number | null)[][]>([])
   const [mappings, setMappings] = useState<Record<string, keyof ChemicalInsert | null>>({})
   const [previewRows, setPreviewRows] = useState<Partial<ChemicalInsert>[]>([])
+  const [addedBy, setAddedBy] = useState('')
   const [parsing, setParsing] = useState(false)
   const [importing, setImporting] = useState(false)
-  const [sdsStatus, setSdsStatus] = useState<SdsStatus>('idle')
-  const [sdsFilled, setSdsFilled] = useState(0)
+  const [enrichStatus, setEnrichStatus] = useState<EnrichStatus>('idle')
+  const [enrichCount, setEnrichCount] = useState(0)
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -68,45 +69,73 @@ export default function ImportModal({ onClose, onImport }: Props) {
   function buildPreview() {
     const rows = applyMappings(headers, rawRows, mappings)
     setPreviewRows(rows)
-    setSdsStatus('idle')
-    setSdsFilled(0)
+    setEnrichStatus('idle')
+    setEnrichCount(0)
     setStep('preview')
   }
 
-  async function autoFillSDS() {
-    const missing = previewRows.filter(r => r.cas_number && !r.sds_url)
-    if (missing.length === 0) return
-    setSdsStatus('loading')
+  async function autoEnrich() {
+    const toEnrich = previewRows.filter(r =>
+      (r.cas_number || r.name) &&
+      (!r.sds_url || !r.hazards || !r.storage_conditions || r.carbon_count == null)
+    )
+    if (toEnrich.length === 0) return
+
+    setEnrichStatus('loading')
     try {
-      const res = await fetch('/api/find-sds', {
+      const res = await fetch('/api/enrich-chemicals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cas_numbers: missing.map(r => r.cas_number) }),
+        body: JSON.stringify({
+          chemicals: toEnrich.map(r => ({ cas_number: r.cas_number, name: r.name })),
+        }),
       })
-      if (!res.ok) { setSdsStatus('idle'); return }
-      const { results } = await res.json() as { results: Record<string, string> }
+      if (!res.ok) { setEnrichStatus('idle'); return }
+
+      const { enriched } = await res.json() as { enriched: Array<{
+        sds_url?: string
+        hazards?: string
+        storage_conditions?: string | null
+        carbon_count?: number | null
+      } | null> }
+
       let filled = 0
+      let enrichIdx = 0
+
       setPreviewRows(rows => rows.map(r => {
-        if (r.cas_number && !r.sds_url && results[r.cas_number]) {
-          filled++
-          return { ...r, sds_url: results[r.cas_number] }
-        }
-        return r
+        const needsEnrich = (r.cas_number || r.name) &&
+          (!r.sds_url || !r.hazards || !r.storage_conditions || r.carbon_count == null)
+        if (!needsEnrich) return r
+
+        const data = enriched[enrichIdx++]
+        if (!data) return r
+
+        const updated = { ...r }
+        let changed = false
+        if (!updated.sds_url && data.sds_url) { updated.sds_url = data.sds_url; changed = true }
+        if (!updated.hazards && data.hazards) { updated.hazards = data.hazards; changed = true }
+        if (!updated.storage_conditions && data.storage_conditions) { updated.storage_conditions = data.storage_conditions; changed = true }
+        if (updated.carbon_count == null && data.carbon_count != null) { updated.carbon_count = data.carbon_count; changed = true }
+        if (changed) filled++
+        return updated
       }))
-      setSdsFilled(filled)
-      setSdsStatus('done')
+
+      setEnrichCount(filled)
+      setEnrichStatus('done')
     } catch {
-      setSdsStatus('idle')
+      setEnrichStatus('idle')
     }
   }
 
   async function handleImport() {
     setImporting(true)
-    await onImport(previewRows)
+    const rows = addedBy.trim()
+      ? previewRows.map(r => ({ ...r, added_by: addedBy.trim() }))
+      : previewRows
+    await onImport(rows)
     setImporting(false)
   }
 
-  // Count how many columns are mapped vs skipped
   const mappedCount = Object.values(mappings).filter(Boolean).length
   const hasName = Object.values(mappings).includes('name')
 
@@ -218,39 +247,54 @@ export default function ImportModal({ onClose, onImport }: Props) {
                 Found <strong>{previewRows.length}</strong> chemical{previewRows.length !== 1 ? 's' : ''} ready to import.
               </div>
 
-              {/* Auto-SDS fill */}
+              {/* Added by */}
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-slate-600 whitespace-nowrap">Added by</label>
+                <input
+                  className="input py-1.5 text-sm"
+                  placeholder="Your name (optional)"
+                  value={addedBy}
+                  onChange={e => setAddedBy(e.target.value)}
+                />
+              </div>
+
+              {/* Auto-enrich from PubChem */}
               {(() => {
-                const missingSds = previewRows.filter(r => r.cas_number && !r.sds_url).length
-                if (sdsStatus === 'done') {
+                const missingCount = previewRows.filter(r =>
+                  (r.cas_number || r.name) &&
+                  (!r.sds_url || !r.hazards || !r.storage_conditions || r.carbon_count == null)
+                ).length
+
+                if (enrichStatus === 'done') {
                   return (
                     <div className="flex items-center gap-2 text-sm text-teal-700 bg-teal-50 border border-teal-100 rounded-lg px-3 py-2">
                       <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                       </svg>
-                      SDS links added for {sdsFilled} chemical{sdsFilled !== 1 ? 's' : ''}.
+                      PubChem data filled for {enrichCount} chemical{enrichCount !== 1 ? 's' : ''} (SDS, hazards, storage, carbons).
                     </div>
                   )
                 }
-                if (missingSds > 0) {
+                if (missingCount > 0) {
                   return (
                     <div className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-sm">
                       <span className="text-amber-800">
-                        <strong>{missingSds}</strong> chemical{missingSds !== 1 ? 's are' : ' is'} missing SDS links.
+                        <strong>{missingCount}</strong> chemical{missingCount !== 1 ? 's are' : ' is'} missing PubChem data (SDS, hazards, storage, carbons).
                       </span>
                       <button
-                        onClick={autoFillSDS}
-                        disabled={sdsStatus === 'loading'}
+                        onClick={autoEnrich}
+                        disabled={enrichStatus === 'loading'}
                         className="btn-secondary text-xs py-1 px-3 whitespace-nowrap flex items-center gap-1.5"
                       >
-                        {sdsStatus === 'loading' ? (
+                        {enrichStatus === 'loading' ? (
                           <>
                             <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                             </svg>
-                            Finding SDS…
+                            Looking up…
                           </>
-                        ) : 'Auto-fill SDS links'}
+                        ) : 'Auto-fill from PubChem'}
                       </button>
                     </div>
                   )
@@ -263,7 +307,7 @@ export default function ImportModal({ onClose, onImport }: Props) {
                   <table className="text-xs w-full">
                     <thead className="bg-gray-50">
                       <tr>
-                        {['Chemical Name', 'CAS #', 'Distributor', 'Container Size', 'Location', '# Bottles'].map(h => (
+                        {['Chemical Name', 'CAS #', 'Hazards', 'Storage', 'SDS', 'Location', '# Bottles'].map(h => (
                           <th key={h} className="px-3 py-2 text-left font-medium text-slate-600">{h}</th>
                         ))}
                       </tr>
@@ -273,15 +317,16 @@ export default function ImportModal({ onClose, onImport }: Props) {
                         <tr key={i} className="border-t">
                           <td className="px-3 py-1.5 font-medium">{r.name ?? ''}</td>
                           <td className="px-3 py-1.5 text-slate-500 font-mono">{r.cas_number ?? ''}</td>
-                          <td className="px-3 py-1.5">{r.distributor ?? ''}</td>
-                          <td className="px-3 py-1.5">{r.container_size ?? ''}</td>
+                          <td className="px-3 py-1.5 text-slate-500 max-w-[120px] truncate">{r.hazards ?? '—'}</td>
+                          <td className="px-3 py-1.5 text-slate-500 max-w-[100px] truncate">{r.storage_conditions ?? '—'}</td>
+                          <td className="px-3 py-1.5">{r.sds_url ? <span className="text-teal-600">✓</span> : '—'}</td>
                           <td className="px-3 py-1.5">{r.location ?? ''}</td>
                           <td className="px-3 py-1.5">{r.bottle_count ?? ''}</td>
                         </tr>
                       ))}
                       {previewRows.length > 6 && (
                         <tr className="border-t">
-                          <td colSpan={6} className="px-3 py-1.5 text-slate-400 italic">
+                          <td colSpan={7} className="px-3 py-1.5 text-slate-400 italic">
                             …and {previewRows.length - 6} more
                           </td>
                         </tr>
