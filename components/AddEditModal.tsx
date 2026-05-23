@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import type { Chemical, ChemicalInsert } from '@/types/chemical'
 import {
   CONTAINER_SIZES, PHYSICAL_STATES, COMMON_DISTRIBUTORS,
-  STORAGE_CONDITIONS, HAZARD_OPTIONS, normalizeDistributor,
+  STORAGE_CONDITIONS, HAZARD_OPTIONS, normalizeDistributor, containerSizesForState,
 } from '@/types/chemical'
 
 interface Props {
@@ -64,7 +64,17 @@ export default function AddEditModal({ chemical, onClose, onSave, existingLocati
   }, [chemical])
 
   function set(field: keyof ChemicalInsert, value: string | number | null) {
-    setForm(f => ({ ...f, [field]: value }))
+    setForm(f => {
+      const next = { ...f, [field]: value }
+      // Clear container size if the new physical state makes it incompatible
+      if (field === 'physical_state') {
+        const validSizes = containerSizesForState(value as string)
+        if (f.container_size && !validSizes.includes(f.container_size)) {
+          next.container_size = ''
+        }
+      }
+      return next
+    })
     if (field === 'added_by' && typeof value === 'string') {
       localStorage.setItem('lab_added_by', value)
     }
@@ -254,7 +264,7 @@ export default function AddEditModal({ chemical, onClose, onSave, existingLocati
                   <select className="input" value={form.container_size ?? ''}
                     onChange={e => set('container_size', e.target.value)}>
                     <option value="">— Select —</option>
-                    {CONTAINER_SIZES.map(s => <option key={s}>{s}</option>)}
+                    {containerSizesForState(form.physical_state).map(s => <option key={s}>{s}</option>)}
                   </select>
                   <button type="button" onClick={() => { setCustomSize(true); set('container_size', '') }}
                     className="btn-ghost px-2 text-xs">Custom</button>

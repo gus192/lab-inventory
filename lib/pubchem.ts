@@ -31,7 +31,7 @@ function parseCarbons(formula: string | null | undefined): number | null {
   return m[1] ? parseInt(m[1]) : 1
 }
 
-// Recursively collect every "String" value from a PubChem JSON response
+// Recursively collect every "String" value from a PubChem JSON response as flat text
 function collectStrings(obj: unknown): string {
   if (!obj || typeof obj !== 'object') return ''
   const o = obj as Record<string, unknown>
@@ -40,6 +40,36 @@ function collectStrings(obj: unknown): string {
     if (val && typeof val === 'object') text += collectStrings(val)
   }
   return text
+}
+
+// Same as collectStrings but returns individual strings for frequency voting
+function collectStringArray(obj: unknown): string[] {
+  const results: string[] = []
+  if (!obj || typeof obj !== 'object') return results
+  const o = obj as Record<string, unknown>
+  if (typeof o.String === 'string') results.push(o.String)
+  for (const val of Object.values(o)) {
+    if (val && typeof val === 'object') results.push(...collectStringArray(val))
+  }
+  return results
+}
+
+// Vote across individual strings rather than first-match on concatenated text.
+// This prevents a single off-topic string (e.g. an NKRA classification or citation)
+// from overriding multiple descriptive strings that agree on a different answer.
+function voteMatch(strings: string[], keywordMap: Array<[string, string]>): string | null {
+  const votes: Record<string, number> = {}
+  for (const s of strings) {
+    const lower = s.toLowerCase()
+    for (const [key, val] of keywordMap) {
+      if (lower.includes(key)) {
+        votes[val] = (votes[val] ?? 0) + 1
+        break // one vote per string; first keyword match wins per string
+      }
+    }
+  }
+  const sorted = Object.entries(votes).sort((a, b) => b[1] - a[1])
+  return sorted.length > 0 ? sorted[0][0] : null
 }
 
 // Map keywords found anywhere in the GHS section to our hazard labels.
@@ -105,10 +135,20 @@ const STORAGE_MAP: Array<[string, string]> = [
 function parseStorageConditions(storageData: unknown): string | null {
   if (!storageData) return null
   try {
-    const text = collectStrings(storageData).toLowerCase()
-    for (const [key, val] of STORAGE_MAP) {
-      if (text.includes(key)) return val
-    }
+    const allStrings = collectStringArray(storageData)
+
+    // Only consider strings that are actual storage instructions, not citations or notes.
+    // Strip inline citations like /Product name/ before checking.
+    const instructions = allStrings
+      .map(s => s.replace(/\s*\/[^/]+\/\s*/g, ' ').trim())
+      .filter(s => {
+        const l = s.toLowerCase()
+        return l.startsWith('store') || l.startsWith('keep') ||
+               l.startsWith('should be stored') || l.startsWith('must be stored')
+      })
+
+    const candidates = instructions.length > 0 ? instructions : allStrings
+    return voteMatch(candidates, STORAGE_MAP)
   } catch { /* silent */ }
   return null
 }
@@ -149,10 +189,10 @@ const PHYSICAL_STATE_MAP: Array<[string, string]> = [
 function parsePhysicalState(physData: unknown): string | null {
   if (!physData) return null
   try {
-    const text = collectStrings(physData).toLowerCase()
-    for (const [key, val] of PHYSICAL_STATE_MAP) {
-      if (text.includes(key)) return val
-    }
+    // Use frequency voting so that one off-topic string (e.g. an NKRA hazmat
+    // classification listing "Dry Powder" among many other forms) cannot override
+    // multiple descriptive strings that all agree on the actual state.
+    return voteMatch(collectStringArray(physData), PHYSICAL_STATE_MAP)
   } catch { /* silent */ }
   return null
 }
@@ -172,6 +212,15 @@ export async function enrichByCid(cid: number): Promise<PubChemData | null> {
     const cas = synonyms.find((s: string) => /^\d{1,7}-\d{2}-\d$/.test(s)) ?? null
     const formula = props.MolecularFormula ?? null
 
+    const hazards = parseGHSHazards(ghsData)
+
+    // Fall back to hazard-based storage inference if PubChem has no data
+    let storage = parseStorageConditions(storageData)
+    if (!storage) {
+      if (hazards.includes('Flammable')) storage = 'Flammables cabinet'
+      else if (hazards.includes('Corrosive')) storage = 'Corrosives cabinet'
+    }
+
     return {
       cid,
       cas_number: cas,
@@ -181,8 +230,8 @@ export async function enrichByCid(cid: number): Promise<PubChemData | null> {
       physical_state: parsePhysicalState(physData),
       sds_url: `https://pubchem.ncbi.nlm.nih.gov/compound/${cid}#section=Safety-and-Hazards`,
       pubchem_url: `https://pubchem.ncbi.nlm.nih.gov/compound/${cid}`,
-      hazards: parseGHSHazards(ghsData),
-      storage_conditions: parseStorageConditions(storageData),
+      hazards,
+      storage_conditions: storage,
     }
   } catch {
     return null

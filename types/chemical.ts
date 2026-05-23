@@ -21,10 +21,21 @@ export interface Chemical {
 
 export type ChemicalInsert = Omit<Chemical, 'id' | 'created_at' | 'updated_at' | 'deleted_at' | 'added_at'>
 
-export const CONTAINER_SIZES = [
+export const VOLUME_SIZES = [
   '1 mL', '5 mL', '10 mL', '25 mL', '50 mL', '100 mL', '250 mL', '500 mL', '1 L', '2 L', '4 L',
+]
+export const MASS_SIZES = [
   '100 mg', '500 mg', '1 g', '5 g', '10 g', '25 g', '50 g', '100 g', '250 g', '500 g', '1 kg', '2.5 kg',
 ]
+export const CONTAINER_SIZES = [...VOLUME_SIZES, ...MASS_SIZES]
+
+export function containerSizesForState(state: string | null | undefined): string[] {
+  if (!state) return CONTAINER_SIZES
+  const s = state.toLowerCase()
+  if (s === 'liquid' || s === 'viscous liquid' || s === 'gas') return VOLUME_SIZES
+  if (s === 'solid' || s === 'powder' || s === 'gel') return MASS_SIZES
+  return CONTAINER_SIZES
+}
 
 export const PHYSICAL_STATES = [
   'Liquid', 'Viscous liquid', 'Solid', 'Powder', 'Gel', 'Gas',
