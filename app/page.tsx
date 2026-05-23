@@ -10,6 +10,18 @@ import { useRouter } from 'next/navigation'
 
 type Modal = 'add' | 'edit' | 'import' | null
 
+const CONFETTI_COLORS = [
+  '#f97316','#fb923c','#fdba74',
+  '#1d4ed8','#2563eb','#3b82f6','#60a5fa',
+  '#f97316','#2563eb','#fb923c',
+]
+
+interface ConfettiPiece {
+  id: number; color: string; startX: number
+  dx: number; dy: number; dr: number
+  w: number; h: number; duration: number; delay: number; circle: boolean
+}
+
 export default function HomePage() {
   const router = useRouter()
   const [chemicals, setChemicals] = useState<Chemical[]>([])
@@ -20,6 +32,8 @@ export default function HomePage() {
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
   const [userName, setUserName] = useState('')
+  const [confetti, setConfetti] = useState<ConfettiPiece[]>([])
+  const [filling, setFilling] = useState(false)
 
   useEffect(() => {
     setUserName(localStorage.getItem('lab_added_by') ?? '')
@@ -77,15 +91,41 @@ export default function HomePage() {
     if (!res.ok) { showToast('Import failed', 'error'); return }
     const inserted = await res.json()
     showToast(`Imported ${inserted.length} chemicals`)
+    const pieces: ConfettiPiece[] = Array.from({ length: 90 }, (_, i) => ({
+      id: i,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      startX: Math.random() * 100,
+      dx: (Math.random() - 0.5) * 350,
+      dy: 450 + Math.random() * 400,
+      dr: (Math.random() - 0.5) * 1080,
+      w: 6 + Math.random() * 10,
+      h: 3 + Math.random() * 8,
+      duration: 1600 + Math.random() * 1400,
+      delay: Math.random() * 800,
+      circle: Math.random() > 0.6,
+    }))
+    setConfetti(pieces)
+    setTimeout(() => setConfetti([]), 4500)
     setModal(null)
     loadChemicals()
   }
 
-  async function handleDelete(id: string) {
-    const res = await fetch(`/api/chemicals/${id}`, { method: 'DELETE' })
-    if (!res.ok) { showToast('Delete failed', 'error'); return }
-    showToast('Deleted')
-    setChemicals(prev => prev.filter(c => c.id !== id))
+  async function handleDelete(c: Chemical) {
+    if ((c.bottle_count ?? 0) > 1) {
+      const res = await fetch(`/api/chemicals/${c.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bottle_count: c.bottle_count! - 1 }),
+      })
+      if (!res.ok) { showToast('Failed to update', 'error'); return }
+      showToast(`Bottle removed — ${c.bottle_count! - 1} remaining`)
+      setChemicals(prev => prev.map(ch => ch.id === c.id ? { ...ch, bottle_count: c.bottle_count! - 1 } : ch))
+    } else {
+      const res = await fetch(`/api/chemicals/${c.id}`, { method: 'DELETE' })
+      if (!res.ok) { showToast('Delete failed', 'error'); return }
+      showToast('Moved to deleted')
+      setChemicals(prev => prev.filter(ch => ch.id !== c.id))
+    }
   }
 
   async function handleBulkDelete(ids: string[]) {
@@ -97,6 +137,22 @@ export default function HomePage() {
     if (!res.ok) { showToast('Delete failed', 'error'); return }
     showToast(`Deleted ${ids.length} chemicals`)
     setChemicals(prev => prev.filter(c => !ids.includes(c.id)))
+  }
+
+  async function handleFillMissing() {
+    setFilling(true)
+    try {
+      const res = await fetch('/api/fill-missing', { method: 'POST' })
+      if (!res.ok) { showToast('Fill failed', 'error'); return }
+      const { filled, total } = await res.json()
+      if (total === 0) showToast('All chemicals already have SDS data')
+      else showToast(`Filled data for ${filled} of ${total} chemicals`)
+      if (filled > 0) loadChemicals()
+    } catch {
+      showToast('Network error', 'error')
+    } finally {
+      setFilling(false)
+    }
   }
 
   function handleExportSelected(ids: string[]) {
@@ -165,6 +221,23 @@ export default function HomePage() {
                 </div>
               )}
             </div>
+
+            <button
+              onClick={handleFillMissing}
+              disabled={filling}
+              className="btn text-xs py-1.5 px-3 bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700 disabled:opacity-50">
+              {filling ? (
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+              )}
+              {filling ? 'Filling…' : 'Fill Missing'}
+            </button>
 
             {userName && (
               <span className="text-xs text-slate-400 hidden sm:block">
@@ -267,6 +340,29 @@ export default function HomePage() {
 
       {/* Click outside export dropdown */}
       {exportOpen && <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} />}
+
+      {confetti.length > 0 && (
+        <div className="fixed inset-0 pointer-events-none z-[60] overflow-hidden">
+          {confetti.map(p => (
+            <div
+              key={p.id}
+              style={{
+                position: 'absolute',
+                left: `${p.startX}%`,
+                top: '-14px',
+                width: p.w,
+                height: p.circle ? p.w : p.h,
+                background: p.color,
+                borderRadius: p.circle ? '50%' : '2px',
+                '--dx': `${p.dx}px`,
+                '--dy': `${p.dy}px`,
+                '--dr': `${p.dr}deg`,
+                animation: `confettiFall ${p.duration}ms ${p.delay}ms ease-in forwards`,
+              } as React.CSSProperties}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

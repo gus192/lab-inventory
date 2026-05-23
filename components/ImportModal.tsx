@@ -5,16 +5,6 @@ import type { ChemicalInsert } from '@/types/chemical'
 import { COLUMN_LABELS } from '@/types/chemical'
 import { applyMappings } from '@/lib/mapRows'
 
-const CONFETTI_COLORS = [
-  '#f97316','#ef4444','#8b5cf6','#3b82f6','#10b981',
-  '#f59e0b','#ec4899','#06b6d4','#a3e635','#fb7185',
-]
-
-interface ConfettiPiece {
-  id: number; color: string; dx: number; dy: number; dr: number
-  w: number; h: number; duration: number; delay: number; circle: boolean
-}
-
 interface Props {
   onClose: () => void
   onImport: (rows: Partial<ChemicalInsert>[]) => Promise<void>
@@ -48,7 +38,6 @@ export default function ImportModal({ onClose, onImport }: Props) {
   const [enrichCount, setEnrichCount] = useState(0)
   const [error, setError] = useState('')
   const [isDragging, setIsDragging] = useState(false)
-  const [confetti, setConfetti] = useState<ConfettiPiece[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
 
   async function processFile(file: File) {
@@ -68,22 +57,6 @@ export default function ImportModal({ onClose, onImport }: Props) {
       setHeaders(data.headers)
       setRawRows(data.rawRows)
       setMappings(data.suggestedMappings)
-
-      // Confetti burst on successful upload
-      const pieces: ConfettiPiece[] = Array.from({ length: 60 }, (_, i) => ({
-        id: i,
-        color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-        dx: (Math.random() - 0.5) * 900,
-        dy: -(Math.random() * 480 + 80),
-        dr: (Math.random() - 0.5) * 1440,
-        w: 5 + Math.random() * 9,
-        h: 3 + Math.random() * 7,
-        duration: 900 + Math.random() * 900,
-        delay: Math.random() * 350,
-        circle: Math.random() > 0.6,
-      }))
-      setConfetti(pieces)
-      setTimeout(() => setConfetti([]), 2400)
 
       setStep('map')
     } catch {
@@ -190,7 +163,6 @@ export default function ImportModal({ onClose, onImport }: Props) {
   const hasName = Object.values(mappings).includes('name')
 
   return (
-    <>
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
         {/* Header */}
@@ -448,30 +420,5 @@ export default function ImportModal({ onClose, onImport }: Props) {
         </div>
       </div>
     </div>
-
-    {/* Confetti burst on successful file upload */}
-    {confetti.length > 0 && (
-      <div className="fixed inset-0 pointer-events-none z-[60] overflow-hidden">
-        {confetti.map(p => (
-          <div
-            key={p.id}
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: '45%',
-              width: p.w,
-              height: p.circle ? p.w : p.h,
-              background: p.color,
-              borderRadius: p.circle ? '50%' : '2px',
-              '--dx': `${p.dx}px`,
-              '--dy': `${p.dy}px`,
-              '--dr': `${p.dr}deg`,
-              animation: `confettiFly ${p.duration}ms ${p.delay}ms ease-out forwards`,
-            } as React.CSSProperties}
-          />
-        ))}
-      </div>
-    )}
-    </>
   )
 }

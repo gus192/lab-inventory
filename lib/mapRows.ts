@@ -54,12 +54,18 @@ export function applyMappings(
     })
 
     if (hasData && entry.name) {
-      // Drop container size only when there's a clear unit-type mismatch with physical state
-      // (e.g. grams for a Liquid, or mL for a Solid). Non-canonical sizes like "150 mL" are kept.
       if (entry.container_size && entry.physical_state) {
-        const cs = (entry.container_size as string).toLowerCase()
-        const isVolume = /\d\s*(ml|l)\b/.test(cs)
-        const isMass   = /\d\s*(mg|g|kg)\b/.test(cs)
+        const cs = (entry.container_size as string).trim()
+        // Infer unit for bare numbers (e.g. "25" → "25 g" for solids, "25 mL" for liquids)
+        if (/^\d+(\.\d+)?$/.test(cs)) {
+          const state = (entry.physical_state as string).toLowerCase()
+          const wantsVolume = ['liquid', 'viscous liquid', 'gas'].includes(state)
+          entry.container_size = `${cs} ${wantsVolume ? 'mL' : 'g'}`
+        }
+        // Drop if clear unit-type mismatch
+        const csLow = (entry.container_size as string).toLowerCase()
+        const isVolume = /\d\s*(ml|l)\b/.test(csLow)
+        const isMass   = /\d\s*(mg|g|kg)\b/.test(csLow)
         const state    = (entry.physical_state as string).toLowerCase()
         const wantsVolume = ['liquid', 'viscous liquid', 'gas'].includes(state)
         const wantsMass   = ['solid', 'powder', 'gel'].includes(state)

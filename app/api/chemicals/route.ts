@@ -5,15 +5,16 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const deleted = searchParams.get('deleted') === 'true'
 
-  let query = supabase
-    .from('chemicals')
-    .select('*')
-    .order('location', { ascending: true, nullsFirst: false })
-    .order('name', { ascending: true })
+  let query = supabase.from('chemicals').select('*')
 
-  query = deleted
-    ? query.not('deleted_at', 'is', null)
-    : query.is('deleted_at', null)
+  if (deleted) {
+    query = query.not('deleted_at', 'is', null).order('deleted_at', { ascending: false })
+  } else {
+    query = query
+      .is('deleted_at', null)
+      .order('location', { ascending: true, nullsFirst: false })
+      .order('name', { ascending: true })
+  }
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

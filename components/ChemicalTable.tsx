@@ -6,7 +6,7 @@ import type { Chemical } from '@/types/chemical'
 interface Props {
   chemicals: Chemical[]
   onEdit: (c: Chemical) => void
-  onDelete: (id: string) => void
+  onDelete: (c: Chemical) => void
   onBulkDelete: (ids: string[]) => void
   onExportSelected: (ids: string[]) => void
 }
@@ -23,6 +23,18 @@ const HAZARD_COLORS: Record<string, string> = {
   'Oxidizer': 'bg-blue-50 text-blue-700 border-blue-200',
   'Moisture sensitive': 'bg-cyan-50 text-cyan-700 border-cyan-200',
   'Air sensitive': 'bg-sky-50 text-sky-700 border-sky-200',
+}
+
+const HAZARD_ABBREV: Record<string, string> = {
+  'Flammable': 'Flam',
+  'Corrosive': 'Corr',
+  'Toxic': 'Tox',
+  'Irritant': 'Irrit',
+  'Reactive': 'React',
+  'Oxidizer': 'Oxid',
+  'Moisture sensitive': 'H₂O',
+  'Air sensitive': 'Air',
+  'Environmental hazard': 'Env',
 }
 
 function formatDate(dateStr: string | null): string {
@@ -217,24 +229,19 @@ export default function ChemicalTable({ chemicals, onEdit, onDelete, onBulkDelet
                 </th>
                 <Th col="name" label="Chemical Name" className="min-w-[200px]" />
                 <Th col="cas_number" label="CAS #" />
-                <Th col="distributor" label="Distributor" />
                 <Th col="container_size" label="Container Size" />
-                <Th col="physical_state" label="Physical State" />
                 <Th col="location" label="Location" />
-                <Th col="carbon_count" label="# of Carbons" />
                 <Th col="bottle_count" label="# of Bottles" />
                 <Th col="storage_conditions" label="Storage Conditions" />
                 <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Hazards</th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">SDS</th>
-                <Th col="added_by" label="Added By" />
-                <Th col="added_at" label="Date Added" />
                 <th className="px-3 py-3 w-16" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={15} className="px-4 py-12 text-center text-slate-400 text-sm">
+                  <td colSpan={10} className="px-4 py-12 text-center text-slate-400 text-sm">
                     {chemicals.length === 0
                       ? 'No chemicals yet — add one or import a spreadsheet.'
                       : 'No results match your search.'}
@@ -260,24 +267,15 @@ export default function ChemicalTable({ chemicals, onEdit, onDelete, onBulkDelet
                   <td className="px-3 py-2.5 font-mono text-xs text-slate-500 whitespace-nowrap">
                     {c.cas_number ?? '—'}
                   </td>
-                  <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
-                    {c.distributor ?? '—'}
-                  </td>
                   <td className="px-3 py-2.5 whitespace-nowrap">
                     {c.container_size ? (
                       <span className="badge bg-slate-100 text-slate-700 border border-slate-200">{c.container_size}</span>
                     ) : '—'}
                   </td>
-                  <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
-                    {c.physical_state ?? '—'}
-                  </td>
                   <td className="px-3 py-2.5">
                     {c.location ? (
                       <span className="badge bg-indigo-50 text-indigo-700 border border-indigo-100">{c.location}</span>
                     ) : '—'}
-                  </td>
-                  <td className="px-3 py-2.5 text-center text-slate-600">
-                    {c.carbon_count ?? '—'}
                   </td>
                   <td className="px-3 py-2.5 text-center">
                     {c.bottle_count != null ? (
@@ -289,12 +287,16 @@ export default function ChemicalTable({ chemicals, onEdit, onDelete, onBulkDelet
                   <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">
                     {c.storage_conditions ?? '—'}
                   </td>
-                  <td className="px-3 py-2.5 max-w-[160px]">
+                  <td className="px-3 py-2.5">
                     {c.hazards ? (
                       <div className="flex flex-wrap gap-1">
                         {c.hazards.split(', ').map(h => (
-                          <span key={h} className={`badge border text-[10px] ${HAZARD_COLORS[h] ?? 'bg-slate-50 text-slate-600 border-slate-200'}`}>
-                            {h}
+                          <span
+                            key={h}
+                            title={h}
+                            className={`badge border text-[10px] px-1.5 py-0.5 ${HAZARD_COLORS[h] ?? 'bg-slate-50 text-slate-600 border-slate-200'}`}
+                          >
+                            {HAZARD_ABBREV[h] ?? h.slice(0, 4)}
                           </span>
                         ))}
                       </div>
@@ -311,12 +313,6 @@ export default function ChemicalTable({ chemicals, onEdit, onDelete, onBulkDelet
                       </a>
                     ) : '—'}
                   </td>
-                  <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">
-                    {c.added_by ?? '—'}
-                  </td>
-                  <td className="px-3 py-2.5 text-xs text-slate-400 whitespace-nowrap">
-                    {formatDate(c.added_at)}
-                  </td>
                   <td className="px-3 py-2.5 text-right">
                     <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 justify-end transition-opacity">
                       <button onClick={() => onEdit(c)}
@@ -325,7 +321,8 @@ export default function ChemicalTable({ chemicals, onEdit, onDelete, onBulkDelet
                           <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
                         </svg>
                       </button>
-                      <button onClick={() => onDelete(c.id)}
+                      <button onClick={() => onDelete(c)}
+                        title={c.bottle_count != null && c.bottle_count > 1 ? `Remove 1 bottle (${c.bottle_count - 1} remaining)` : 'Move to deleted'}
                         className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors">
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
