@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
   const router = useRouter()
+  const [name, setName] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -19,6 +20,7 @@ export default function LoginPage() {
       body: JSON.stringify({ password }),
     })
     if (res.ok) {
+      localStorage.setItem('lab_added_by', name.trim())
       router.push('/')
       router.refresh()
     } else {
@@ -43,13 +45,24 @@ export default function LoginPage() {
         <div className="card p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
+              <label className="label">Your Name</label>
+              <input
+                type="text"
+                className="input"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                autoFocus
+                required
+                placeholder="e.g. Alex Chen"
+              />
+            </div>
+            <div>
               <label className="label">Lab Password</label>
               <input
                 type="password"
                 className="input"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                autoFocus
                 required
                 placeholder="Enter password"
               />
@@ -57,7 +70,7 @@ export default function LoginPage() {
             {error && (
               <p className="text-red-500 text-sm text-center bg-red-50 border border-red-100 rounded-lg py-2">{error}</p>
             )}
-            <button type="submit" disabled={loading} className="btn-primary w-full justify-center py-2.5">
+            <button type="submit" disabled={loading || !name.trim()} className="btn-primary w-full justify-center py-2.5">
               {loading ? 'Signing in…' : 'Sign In'}
             </button>
           </form>

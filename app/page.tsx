@@ -19,6 +19,11 @@ export default function HomePage() {
   const [editing, setEditing] = useState<Chemical | null>(null)
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
+  const [userName, setUserName] = useState('')
+
+  useEffect(() => {
+    setUserName(localStorage.getItem('lab_added_by') ?? '')
+  }, [])
 
   function showToast(msg: string, type: 'success' | 'error' = 'success') {
     setToast({ msg, type })
@@ -102,6 +107,7 @@ export default function HomePage() {
 
   async function handleLogout() {
     await fetch('/api/auth', { method: 'DELETE' })
+    localStorage.removeItem('lab_added_by')
     router.push('/login')
   }
 
@@ -159,6 +165,12 @@ export default function HomePage() {
                 </div>
               )}
             </div>
+
+            {userName && (
+              <span className="text-xs text-slate-400 hidden sm:block">
+                {userName}
+              </span>
+            )}
 
             <div className="w-px h-5 bg-slate-700 mx-1" />
 

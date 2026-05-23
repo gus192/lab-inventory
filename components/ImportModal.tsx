@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import type { ChemicalInsert } from '@/types/chemical'
 import { COLUMN_LABELS } from '@/types/chemical'
 import { applyMappings } from '@/lib/mapRows'
@@ -28,6 +28,10 @@ export default function ImportModal({ onClose, onImport }: Props) {
   const [mappings, setMappings] = useState<Record<string, keyof ChemicalInsert | null>>({})
   const [previewRows, setPreviewRows] = useState<Partial<ChemicalInsert>[]>([])
   const [addedBy, setAddedBy] = useState('')
+
+  useEffect(() => {
+    setAddedBy(localStorage.getItem('lab_added_by') ?? '')
+  }, [])
   const [parsing, setParsing] = useState(false)
   const [importing, setImporting] = useState(false)
   const [enrichStatus, setEnrichStatus] = useState<EnrichStatus>('idle')
