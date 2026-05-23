@@ -31,57 +31,49 @@ function parseCarbons(formula: string | null | undefined): number | null {
   return m[1] ? parseInt(m[1]) : 1
 }
 
-// Recursively search PubChem section tree for a heading
-function findSection(sections: any[], heading: string): any | null {
-  for (const section of sections) {
-    if (section.TOCHeading === heading) return section
-    if (Array.isArray(section.Section)) {
-      const found = findSection(section.Section, heading)
-      if (found) return found
-    }
-  }
-  return null
-}
-
-// Collect all String values from a PubChem response object
+// Recursively collect every "String" value from a PubChem JSON response
 function collectStrings(obj: unknown): string {
   if (!obj || typeof obj !== 'object') return ''
-  let text = ''
   const o = obj as Record<string, unknown>
-  if (typeof o.String === 'string') text += ' ' + o.String
+  let text = typeof o.String === 'string' ? ' ' + o.String : ''
   for (const val of Object.values(o)) {
     if (val && typeof val === 'object') text += collectStrings(val)
   }
   return text
 }
 
-const PICTOGRAM_TO_HAZARD: Array<[string, string]> = [
+// Map keywords found anywhere in the GHS section to our hazard labels.
+// More specific entries must come before shorter overlapping ones.
+const HAZARD_KEYWORDS: Array<[string, string]> = [
   ['flame over circle', 'Oxidizer'],
   ['oxidizing', 'Oxidizer'],
-  ['flame', 'Flammable'],
-  ['corrosion', 'Corrosive'],
-  ['skull', 'Toxic'],
-  ['exclamation', 'Irritant'],
-  ['environment', 'Environmental hazard'],
-  ['exploding', 'Reactive'],
+  ['oxidising', 'Oxidizer'],
+  ['flammable', 'Flammable'],   // H225/H226 statements AND "Flame" pictogram description
+  ['flame', 'Flammable'],       // fallback: pictogram named "Flame"
+  ['exploding bomb', 'Reactive'],
   ['explosive', 'Reactive'],
+  ['self-react', 'Reactive'],
+  ['corrosion', 'Corrosive'],
+  ['corrosive', 'Corrosive'],
+  ['skull', 'Toxic'],
+  ['acute tox', 'Toxic'],
+  ['fatal', 'Toxic'],
+  ['exclamation mark', 'Irritant'],
+  ['irritant', 'Irritant'],
+  ['irritat', 'Irritant'],
+  ['harmful', 'Irritant'],
+  ['environment', 'Environmental hazard'],
+  ['aquatic', 'Environmental hazard'],
 ]
 
 function parseGHSHazards(ghsData: unknown): string {
+  if (!ghsData) return ''
   const hazards: string[] = []
   try {
-    const topSections = (ghsData as any)?.Record?.Section ?? []
-    // PubChem nests Pictogram(s) inside Chemical Safety > GHS Classification
-    const pictogramSection = findSection(topSections, 'Pictogram(s)')
-    if (!pictogramSection) return ''
-    for (const info of pictogramSection.Information ?? []) {
-      for (const swm of info.Value?.StringWithMarkup ?? []) {
-        const text = (swm.String ?? '').toLowerCase()
-        for (const [key, hazard] of PICTOGRAM_TO_HAZARD) {
-          if (text.includes(key) && !hazards.includes(hazard)) {
-            hazards.push(hazard)
-          }
-        }
+    const text = collectStrings(ghsData).toLowerCase()
+    for (const [key, hazard] of HAZARD_KEYWORDS) {
+      if (text.includes(key) && !hazards.includes(hazard)) {
+        hazards.push(hazard)
       }
     }
   } catch { /* silent */ }
@@ -111,8 +103,8 @@ const STORAGE_MAP: Array<[string, string]> = [
 ]
 
 function parseStorageConditions(storageData: unknown): string | null {
+  if (!storageData) return null
   try {
-    // Collect all text from the response (storage conditions section is nested)
     const text = collectStrings(storageData).toLowerCase()
     for (const [key, val] of STORAGE_MAP) {
       if (text.includes(key)) return val
@@ -126,7 +118,7 @@ const PHYSICAL_STATE_MAP: Array<[string, string]> = [
   ['oily liquid', 'Viscous liquid'],
   ['liquid', 'Liquid'],
   ['powder', 'Powder'],
-  ['crystalline solid', 'Solid'],
+  ['crystalline', 'Solid'],
   ['white solid', 'Solid'],
   ['solid', 'Solid'],
   ['crystal', 'Solid'],
@@ -135,6 +127,7 @@ const PHYSICAL_STATE_MAP: Array<[string, string]> = [
 ]
 
 function parsePhysicalState(physData: unknown): string | null {
+  if (!physData) return null
   try {
     const text = collectStrings(physData).toLowerCase()
     for (const [key, val] of PHYSICAL_STATE_MAP) {

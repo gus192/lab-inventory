@@ -41,6 +41,9 @@ export function normalizeHeader(h: string): keyof ChemicalInsert | null {
     // sds
     'sds link': 'sds_url', 'sds': 'sds_url', 'sds url': 'sds_url',
     'msds': 'sds_url', 'safety data sheet': 'sds_url',
+    // added by
+    'added by': 'added_by', 'added_by': 'added_by', 'entered by': 'added_by',
+    'submitter': 'added_by', 'person': 'added_by',
     // notes
     'notes': 'notes', 'note': 'notes', 'comments': 'notes',
     'comment': 'notes', 'remarks': 'notes',
