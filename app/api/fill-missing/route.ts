@@ -3,11 +3,12 @@ import { supabase } from '@/lib/supabase'
 import { enrichByQuery } from '@/lib/pubchem'
 
 export async function POST() {
+  // Fetch any non-deleted chemical missing at least one enrichable field
   const { data: missing, error } = await supabase
     .from('chemicals')
     .select('id, name, cas_number, sds_url, hazards, storage_conditions, physical_state, carbon_count')
     .is('deleted_at', null)
-    .is('sds_url', null)
+    .or('sds_url.is.null,hazards.is.null,storage_conditions.is.null,physical_state.is.null,carbon_count.is.null')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!missing || missing.length === 0) return NextResponse.json({ filled: 0, total: 0 })
@@ -20,7 +21,8 @@ export async function POST() {
       const data = await enrichByQuery(query)
       if (!data) continue
       const update: Record<string, unknown> = {}
-      if (data.sds_url) update.sds_url = data.sds_url
+      if (!c.sds_url && data.sds_url) update.sds_url = data.sds_url
+      // "None" means we found the compound but it has no GHS hazards — store it so we don't retry
       if (!c.hazards && data.hazards) update.hazards = data.hazards
       if (!c.storage_conditions && data.storage_conditions) update.storage_conditions = data.storage_conditions
       if (!c.physical_state && data.physical_state) update.physical_state = data.physical_state
