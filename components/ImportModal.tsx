@@ -37,11 +37,10 @@ export default function ImportModal({ onClose, onImport }: Props) {
   const [enrichStatus, setEnrichStatus] = useState<EnrichStatus>('idle')
   const [enrichCount, setEnrichCount] = useState(0)
   const [error, setError] = useState('')
+  const [isDragging, setIsDragging] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  async function processFile(file: File) {
     setParsing(true)
     setError('')
 
@@ -64,6 +63,12 @@ export default function ImportModal({ onClose, onImport }: Props) {
     } finally {
       setParsing(false)
     }
+  }
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    await processFile(file)
   }
 
   function setMapping(header: string, field: keyof ChemicalInsert | null) {
@@ -135,9 +140,20 @@ export default function ImportModal({ onClose, onImport }: Props) {
 
   async function handleImport() {
     setImporting(true)
-    const rows = addedBy.trim()
+    const withAddedBy = addedBy.trim()
       ? previewRows.map(r => ({ ...r, added_by: addedBy.trim() }))
-      : previewRows
+      : [...previewRows]
+
+    // Default storage to Room temperature; use Refrigerator if location mentions fridge
+    const rows = withAddedBy.map(r => {
+      if (r.storage_conditions) return r
+      const loc = (r.location ?? '').toLowerCase()
+      if (loc.includes('fridge') || loc.includes('refriger') || loc.includes('cold room')) {
+        return { ...r, storage_conditions: 'Refrigerator (4°C)' }
+      }
+      return { ...r, storage_conditions: 'Room temperature' }
+    })
+
     await onImport(rows)
     setImporting(false)
   }
@@ -167,25 +183,49 @@ export default function ImportModal({ onClose, onImport }: Props) {
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div key={step} className="flex-1 overflow-y-auto p-5 space-y-4 step-enter">
 
           {/* Step 1: Upload */}
           {step === 'upload' && (
             <>
-              <div
-                className="border-2 border-dashed border-slate-200 rounded-xl p-10 text-center cursor-pointer hover:border-teal-400 hover:bg-teal-50/30 transition-colors"
-                onClick={() => fileRef.current?.click()}
-              >
-                <div className="flex justify-center mb-3">
-                  <svg className="w-10 h-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              {parsing ? (
+                <div className="border-2 border-dashed border-teal-300 rounded-xl p-10 flex flex-col items-center gap-3 bg-teal-50/40">
+                  <svg className="w-8 h-8 text-teal-500 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                   </svg>
+                  <p className="text-sm font-medium text-teal-700">Reading file…</p>
                 </div>
-                <p className="font-medium text-slate-700">Click to select a CSV or Excel file</p>
-                <p className="text-sm text-slate-400 mt-1">You can manually assign any unrecognized columns in the next step</p>
-                <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleFile} />
-              </div>
-              {parsing && <p className="text-center text-teal-600">Reading file…</p>}
+              ) : (
+                <div
+                  className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all duration-200 ${
+                    isDragging
+                      ? 'border-teal-400 bg-teal-50/70 scale-[1.01]'
+                      : 'border-slate-200 hover:border-teal-400 hover:bg-teal-50/30'
+                  }`}
+                  onClick={() => fileRef.current?.click()}
+                  onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
+                  onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragging(false) }}
+                  onDrop={e => {
+                    e.preventDefault()
+                    setIsDragging(false)
+                    const file = e.dataTransfer.files[0]
+                    if (file) processFile(file)
+                  }}
+                >
+                  <div className={`flex justify-center mb-3 transition-transform duration-200 ${isDragging ? 'scale-110' : ''}`}>
+                    <svg className={`w-10 h-10 transition-colors duration-200 ${isDragging ? 'text-teal-400' : 'text-slate-300'}`}
+                         fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                    </svg>
+                  </div>
+                  <p className={`font-medium transition-colors duration-200 ${isDragging ? 'text-teal-700' : 'text-slate-700'}`}>
+                    {isDragging ? 'Drop to upload' : 'Click or drag a CSV or Excel file here'}
+                  </p>
+                  <p className="text-sm text-slate-400 mt-1">Unrecognized columns can be mapped manually in the next step</p>
+                  <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleFile} />
+                </div>
+              )}
               {error && <p className="text-center text-red-600">{error}</p>}
             </>
           )}
@@ -251,6 +291,7 @@ export default function ImportModal({ onClose, onImport }: Props) {
             <>
               <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 text-sm text-teal-800">
                 Found <strong>{previewRows.length}</strong> chemical{previewRows.length !== 1 ? 's' : ''} ready to import.
+                {' '}Chemicals without a storage condition will default to <strong>Room temperature</strong> (or Refrigerator if location mentions &ldquo;fridge&rdquo;).
               </div>
 
               {/* Added by */}
@@ -346,9 +387,14 @@ export default function ImportModal({ onClose, onImport }: Props) {
         <div className="flex justify-between gap-2 p-5 border-t bg-gray-50 rounded-b-xl">
           <button
             onClick={() => {
-              if (step === 'map') setStep('upload')
-              else if (step === 'preview') setStep('map')
-              else onClose()
+              if (step === 'map') {
+                setStep('upload')
+                if (fileRef.current) fileRef.current.value = ''
+              } else if (step === 'preview') {
+                setStep('map')
+              } else {
+                onClose()
+              }
             }}
             className="btn-secondary"
           >

@@ -2,13 +2,14 @@ import * as XLSX from 'xlsx'
 import type { ChemicalInsert } from '@/types/chemical'
 
 export function normalizeHeader(h: string): keyof ChemicalInsert | null {
-  const key = h.toLowerCase().trim().replace(/\s+/g, ' ').replace(/[#\.]/g, '')
+  // Strip #/. then trim so "# of Bottles" → "of bottles", "# Carbons" → "carbons"
+  const key = h.toLowerCase().trim().replace(/[#\.]/g, '').replace(/\s+/g, ' ').trim()
   const map: Record<string, keyof ChemicalInsert> = {
     // name
     'chemical name': 'name', 'chemical': 'name', 'name': 'name',
     'compound': 'name', 'compound name': 'name', 'reagent': 'name', 'substance': 'name',
     // cas
-    'cas': 'cas_number', 'cas ': 'cas_number', 'cas number': 'cas_number',
+    'cas': 'cas_number', 'cas number': 'cas_number',
     'cas no': 'cas_number', 'cas registry': 'cas_number', 'casnumber': 'cas_number',
     // distributor
     'distributor': 'distributor', 'supplier': 'distributor', 'vendor': 'distributor',
@@ -17,6 +18,8 @@ export function normalizeHeader(h: string): keyof ChemicalInsert | null {
     'container size': 'container_size', 'size': 'container_size',
     'amount': 'container_size', 'quantity': 'container_size', 'qty': 'container_size',
     'package size': 'container_size', 'pack size': 'container_size',
+    'volume': 'container_size', 'weight': 'container_size', 'mass': 'container_size',
+    'pack': 'container_size', 'packaging': 'container_size',
     // physical state
     'physical state': 'physical_state', 'state': 'physical_state',
     'form': 'physical_state', 'appearance': 'physical_state',
@@ -24,14 +27,16 @@ export function normalizeHeader(h: string): keyof ChemicalInsert | null {
     'location': 'location', 'storage location': 'location',
     'stored in': 'location', 'cabinet': 'location', 'hood': 'location',
     'shelf': 'location', 'storage': 'location', 'where': 'location',
-    // carbon count
-    '# of carbons': 'carbon_count', 'carbons': 'carbon_count',
+    // carbon count — "# of Carbons" normalizes to "of carbons"
+    'of carbons': 'carbon_count', 'carbons': 'carbon_count',
     'carbon count': 'carbon_count', 'number of carbons': 'carbon_count',
-    'c chain': 'carbon_count',
-    // bottle count
-    '# of bottles': 'bottle_count', 'bottles': 'bottle_count',
+    'num carbons': 'carbon_count', 'c chain': 'carbon_count', 'no of carbons': 'carbon_count',
+    // bottle count — "# of Bottles" normalizes to "of bottles"
+    'of bottles': 'bottle_count', 'bottles': 'bottle_count',
     'bottle count': 'bottle_count', 'number of bottles': 'bottle_count',
+    'num bottles': 'bottle_count', 'no of bottles': 'bottle_count',
     'stock': 'bottle_count', 'count': 'bottle_count', 'qty on hand': 'bottle_count',
+    'quantity on hand': 'bottle_count', 'inventory count': 'bottle_count',
     // storage conditions
     'storage conditions': 'storage_conditions', 'conditions': 'storage_conditions',
     'store at': 'storage_conditions', 'temperature': 'storage_conditions',
