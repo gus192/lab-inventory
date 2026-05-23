@@ -18,7 +18,7 @@ export async function GET(req: Request) {
       carbon_count: data.carbon_count,
       physical_state: data.physical_state,
       hazards: data.hazards || null,
-      storage_conditions: data.storage_conditions,
+      storage_conditions: data.storage_conditions ?? 'Room temperature',
       pubchem_url: data.pubchem_url,
       sds_url: data.sds_url,
     })

@@ -212,15 +212,6 @@ export async function enrichByCid(cid: number): Promise<PubChemData | null> {
     const cas = synonyms.find((s: string) => /^\d{1,7}-\d{2}-\d$/.test(s)) ?? null
     const formula = props.MolecularFormula ?? null
 
-    const hazards = parseGHSHazards(ghsData)
-
-    // Fall back to hazard-based storage inference if PubChem has no data
-    let storage = parseStorageConditions(storageData)
-    if (!storage) {
-      if (hazards.includes('Flammable')) storage = 'Flammables cabinet'
-      else if (hazards.includes('Corrosive')) storage = 'Corrosives cabinet'
-    }
-
     return {
       cid,
       cas_number: cas,
@@ -230,8 +221,8 @@ export async function enrichByCid(cid: number): Promise<PubChemData | null> {
       physical_state: parsePhysicalState(physData),
       sds_url: `https://pubchem.ncbi.nlm.nih.gov/compound/${cid}#section=Safety-and-Hazards`,
       pubchem_url: `https://pubchem.ncbi.nlm.nih.gov/compound/${cid}`,
-      hazards,
-      storage_conditions: storage,
+      hazards: parseGHSHazards(ghsData),
+      storage_conditions: parseStorageConditions(storageData),
     }
   } catch {
     return null

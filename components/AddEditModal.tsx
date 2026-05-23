@@ -66,12 +66,15 @@ export default function AddEditModal({ chemical, onClose, onSave, existingLocati
   function set(field: keyof ChemicalInsert, value: string | number | null) {
     setForm(f => {
       const next = { ...f, [field]: value }
-      // Clear container size if the new physical state makes it incompatible
-      if (field === 'physical_state') {
-        const validSizes = containerSizesForState(value as string)
-        if (f.container_size && !validSizes.includes(f.container_size)) {
-          next.container_size = ''
-        }
+      // Clear container size only on a clear unit-type mismatch (e.g. grams for Liquid)
+      if (field === 'physical_state' && f.container_size) {
+        const cs    = f.container_size.toLowerCase()
+        const isVol = /\d\s*(ml|l)\b/.test(cs)
+        const isMas = /\d\s*(mg|g|kg)\b/.test(cs)
+        const sv    = (value as string).toLowerCase()
+        const wVol  = sv === 'liquid' || sv === 'viscous liquid' || sv === 'gas'
+        const wMas  = sv === 'solid' || sv === 'powder' || sv === 'gel'
+        if ((wVol && isMas) || (wMas && isVol)) next.container_size = ''
       }
       return next
     })

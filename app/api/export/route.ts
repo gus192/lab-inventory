@@ -10,6 +10,7 @@ export async function GET(req: Request) {
   let query = supabase
     .from('chemicals')
     .select('*')
+    .is('deleted_at', null)
     .order('location', { ascending: true, nullsFirst: false })
     .order('name', { ascending: true })
 

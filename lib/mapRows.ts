@@ -1,5 +1,5 @@
 import type { ChemicalInsert } from '@/types/chemical'
-import { normalizeDistributor, normalizePhysicalState, containerSizesForState, CONTAINER_SIZES } from '@/types/chemical'
+import { normalizeDistributor, normalizePhysicalState, CONTAINER_SIZES } from '@/types/chemical'
 
 // Normalize free-text container sizes to canonical values.
 // Handles "100ml" → "100 mL", "1L" → "1 L", "500mg" → "500 mg", etc.
@@ -54,10 +54,16 @@ export function applyMappings(
     })
 
     if (hasData && entry.name) {
-      // Drop container size if it doesn't match the physical state unit type
+      // Drop container size only when there's a clear unit-type mismatch with physical state
+      // (e.g. grams for a Liquid, or mL for a Solid). Non-canonical sizes like "150 mL" are kept.
       if (entry.container_size && entry.physical_state) {
-        const valid = containerSizesForState(entry.physical_state)
-        if (!valid.includes(entry.container_size)) delete entry.container_size
+        const cs = (entry.container_size as string).toLowerCase()
+        const isVolume = /\d\s*(ml|l)\b/.test(cs)
+        const isMass   = /\d\s*(mg|g|kg)\b/.test(cs)
+        const state    = (entry.physical_state as string).toLowerCase()
+        const wantsVolume = ['liquid', 'viscous liquid', 'gas'].includes(state)
+        const wantsMass   = ['solid', 'powder', 'gel'].includes(state)
+        if ((wantsVolume && isMass) || (wantsMass && isVolume)) delete entry.container_size
       }
       rows.push(entry)
     }

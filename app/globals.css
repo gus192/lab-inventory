@@ -11,9 +11,11 @@
   from { opacity: 0; transform: translateY(5px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-@keyframes dropPulse {
-  0%, 100% { transform: scale(1); }
-  50%       { transform: scale(1.04); }
+
+@keyframes confettiFly {
+  0%   { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(1); }
+  15%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), calc(var(--dy) + 180px)) rotate(var(--dr)) scale(0.5); }
 }
 
 @layer utilities {
