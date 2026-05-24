@@ -2,9 +2,10 @@
 
 import { useState, useRef, useEffect } from 'react'
 import type { ChemicalInsert } from '@/types/chemical'
-import { COLUMN_LABELS } from '@/types/chemical'
+import { COLUMN_LABELS, reconcileContainerSize } from '@/types/chemical'
 import { applyMappings } from '@/lib/mapRows'
 import { cleanChemicalName } from '@/lib/normalizeChemicalName'
+import HazardPictograms from '@/components/HazardPictogram'
 
 interface Props {
   onClose: () => void
@@ -112,6 +113,7 @@ export default function ImportModal({ onClose, onImport }: Props) {
       if (!res.ok) { setEnrichStatus('idle'); return }
 
       const { enriched } = await res.json() as { enriched: Array<{
+        title?: string | null
         sds_url?: string
         hazards?: string
         storage_conditions?: string | null
@@ -126,11 +128,19 @@ export default function ImportModal({ onClose, onImport }: Props) {
         if (!data) return
         const r = { ...updatedRows[idx] }
         let changed = false
+        // Standardize spelling/capitalization to PubChem's canonical name
+        if (data.title && r.name && data.title !== r.name) { r.name = data.title; changed = true }
         if (!r.sds_url && data.sds_url) { r.sds_url = data.sds_url; changed = true }
         if (!r.hazards && data.hazards) { r.hazards = data.hazards; changed = true }
         if (!r.storage_conditions && data.storage_conditions) { r.storage_conditions = data.storage_conditions; changed = true }
         if (!r.physical_state && data.physical_state) { r.physical_state = data.physical_state; changed = true }
         if (r.carbon_count == null && data.carbon_count != null) { r.carbon_count = data.carbon_count; changed = true }
+        // Now that the state is known, give bare-number sizes a unit ("25" → "25 mL"/"25 g")
+        if (r.container_size && r.physical_state) {
+          const reconciled = reconcileContainerSize(r.container_size, r.physical_state)
+          if (reconciled === null) { delete r.container_size; changed = true }
+          else if (reconciled !== r.container_size) { r.container_size = reconciled; changed = true }
+        }
         if (changed) { updatedRows[idx] = r; filled++ }
       })
       setPreviewRows(updatedRows)
@@ -342,7 +352,7 @@ export default function ImportModal({ onClose, onImport }: Props) {
                       <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                       </svg>
-                      PubChem data filled for {enrichCount} chemical{enrichCount !== 1 ? 's' : ''} (SDS, hazards, storage, carbons).
+                      PubChem data filled for {enrichCount} chemical{enrichCount !== 1 ? 's' : ''} (standardized names, SDS, hazards, storage, carbons, units).
                     </div>
                   )
                 }
@@ -388,7 +398,7 @@ export default function ImportModal({ onClose, onImport }: Props) {
                         <tr key={i} className="border-t">
                           <td className="px-3 py-1.5 font-medium">{r.name ?? ''}</td>
                           <td className="px-3 py-1.5 text-slate-500 font-mono">{r.cas_number ?? ''}</td>
-                          <td className="px-3 py-1.5 text-slate-500 max-w-[120px] truncate">{r.hazards ?? '—'}</td>
+                          <td className="px-3 py-1.5">{r.hazards ? <HazardPictograms hazards={r.hazards} size="sm" /> : '—'}</td>
                           <td className="px-3 py-1.5 text-slate-500 max-w-[100px] truncate">{r.storage_conditions ?? '—'}</td>
                           <td className="px-3 py-1.5">{r.sds_url ? <span className="text-teal-600">✓</span> : '—'}</td>
                           <td className="px-3 py-1.5">{r.location ?? ''}</td>

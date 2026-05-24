@@ -12,6 +12,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       cid: data.cid,
+      title: data.title,
       cas_number: data.cas_number,
       iupac_name: data.iupac_name,
       molecular_formula: data.molecular_formula,

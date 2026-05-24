@@ -1,10 +1,13 @@
 import { cleanChemicalName } from './normalizeChemicalName'
+import { findAlias } from './lookupAliases'
 
 const PUBCHEM = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug'
 const PUBCHEM_VIEW = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug_view'
 
 export interface PubChemData {
   cid: number
+  /** PubChem's canonical display name, used to standardize spelling/capitalization. */
+  title: string | null
   cas_number: string | null
   iupac_name: string | null
   molecular_formula: string | null
@@ -218,9 +221,10 @@ function parsePhysicalState(physData: unknown): string | null {
 
 export async function enrichByCid(cid: number): Promise<PubChemData | null> {
   try {
-    const [propsData, synData, ghsData, storageData, physData] = await Promise.all([
+    const [propsData, synData, descData, ghsData, storageData, physData] = await Promise.all([
       pget(`${PUBCHEM}/compound/cid/${cid}/property/IUPACName,MolecularFormula,MolecularWeight/JSON`),
       pget(`${PUBCHEM}/compound/cid/${cid}/synonyms/JSON`),
+      pget(`${PUBCHEM}/compound/cid/${cid}/description/JSON`),
       pget(`${PUBCHEM_VIEW}/data/compound/${cid}/JSON?heading=GHS+Classification`),
       pget(`${PUBCHEM_VIEW}/data/compound/${cid}/JSON?heading=Storage+Conditions`),
       pget(`${PUBCHEM_VIEW}/data/compound/${cid}/JSON?heading=Physical+Description`),
@@ -230,9 +234,14 @@ export async function enrichByCid(cid: number): Promise<PubChemData | null> {
     const synonyms: string[] = synData?.InformationList?.Information?.[0]?.Synonym ?? []
     const cas = synonyms.find((s: string) => /^\d{1,7}-\d{2}-\d$/.test(s)) ?? null
     const formula = props.MolecularFormula ?? null
+    // The description endpoint carries PubChem's preferred "Title" (e.g. "Acetone",
+    // "Diethyl Ether") — the cleanest source for standardized name spelling/casing.
+    const descInfo: Array<{ Title?: string }> = descData?.InformationList?.Information ?? []
+    const title = descInfo.find(i => i.Title)?.Title ?? null
 
     return {
       cid,
+      title,
       cas_number: cas,
       iupac_name: props.IUPACName ?? null,
       molecular_formula: formula,
@@ -248,19 +257,38 @@ export async function enrichByCid(cid: number): Promise<PubChemData | null> {
   }
 }
 
-export async function enrichByQuery(query: string): Promise<PubChemData | null> {
-  let cidData = await pget(`${PUBCHEM}/compound/name/${encodeURIComponent(query)}/cids/JSON`)
-  let cid: number = cidData?.IdentifierList?.CID?.[0]
+async function resolveCid(query: string): Promise<number | null> {
+  const data = await pget(`${PUBCHEM}/compound/name/${encodeURIComponent(query)}/cids/JSON`)
+  return data?.IdentifierList?.CID?.[0] ?? null
+}
 
-  // If not found, retry with grade/purity qualifiers stripped (e.g. "Xylenes, ACS grade" → "Xylenes")
-  if (!cid) {
-    const cleaned = cleanChemicalName(query)
-    if (cleaned && cleaned !== query) {
-      cidData = await pget(`${PUBCHEM}/compound/name/${encodeURIComponent(cleaned)}/cids/JSON`)
-      cid = cidData?.IdentifierList?.CID?.[0]
-    }
+export async function enrichByQuery(query: string): Promise<PubChemData | null> {
+  const cleaned = cleanChemicalName(query)
+
+  // Try, in order: the name as given, then with grade/purity qualifiers stripped
+  // (e.g. "Xylenes, ACS grade" → "Xylenes"), then a curated alias that PubChem can
+  // actually resolve (e.g. "Xylenes" → "p-xylene", "DCM" → "dichloromethane").
+  type Candidate = { q: string; keepName?: boolean }
+  const candidates: Candidate[] = [{ q: query }]
+  if (cleaned && cleaned !== query) candidates.push({ q: cleaned })
+  const alias = findAlias(query, cleaned)
+  if (alias) candidates.push({ q: alias.query, keepName: alias.keepName })
+
+  const tried = new Set<string>()
+  for (const cand of candidates) {
+    const key = cand.q.toLowerCase()
+    if (tried.has(key)) continue
+    tried.add(key)
+
+    const cid = await resolveCid(cand.q)
+    if (!cid) continue
+
+    const data = await enrichByCid(cid)
+    // For mixtures resolved via a representative component, suppress the title so
+    // the caller keeps the user's original name (e.g. don't rename "Xylenes" → "p-Xylene").
+    if (data && cand.keepName) data.title = null
+    return data
   }
 
-  if (!cid) return null
-  return enrichByCid(cid)
+  return null
 }

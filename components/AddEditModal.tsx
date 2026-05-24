@@ -5,7 +5,9 @@ import type { Chemical, ChemicalInsert } from '@/types/chemical'
 import {
   CONTAINER_SIZES, PHYSICAL_STATES, COMMON_DISTRIBUTORS,
   STORAGE_CONDITIONS, HAZARD_OPTIONS, normalizeDistributor, containerSizesForState,
+  reconcileContainerSize,
 } from '@/types/chemical'
+import { HazardDiamond } from '@/components/HazardPictogram'
 
 interface Props {
   chemical?: Chemical | null
@@ -107,6 +109,11 @@ export default function AddEditModal({ chemical, onClose, onSave, existingLocati
       const data = await res.json()
       const filled: string[] = []
 
+      // Standardize the name spelling/capitalization to PubChem's canonical title
+      if (data.title && form.name && data.title !== form.name.trim()) {
+        set('name', data.title)
+        filled.push('name')
+      }
       if (!form.cas_number && data.cas_number) { set('cas_number', data.cas_number); filled.push('CAS') }
       if (!form.sds_url && data.sds_url) { set('sds_url', data.sds_url); filled.push('SDS') }
       if (!form.hazards && data.hazards) {
@@ -126,6 +133,13 @@ export default function AddEditModal({ chemical, onClose, onSave, existingLocati
       if (form.carbon_count == null && data.carbon_count != null) {
         set('carbon_count', data.carbon_count)
         filled.push('carbons')
+      }
+      // Give a bare-number container size a unit based on the resolved state
+      const resolvedState = (form.physical_state || data.physical_state) as string | undefined
+      if (form.container_size && resolvedState) {
+        const reconciled = reconcileContainerSize(form.container_size, resolvedState)
+        if (reconciled === null) set('container_size', '')
+        else if (reconciled !== form.container_size) set('container_size', reconciled)
       }
 
       setLookupInfo({
@@ -329,21 +343,27 @@ export default function AddEditModal({ chemical, onClose, onSave, existingLocati
           {/* Hazards */}
           <div>
             <label className="label">Hazards</label>
-            <div className="flex flex-wrap gap-1.5">
-              {HAZARD_OPTIONS.map(h => (
-                <button
-                  key={h}
-                  type="button"
-                  onClick={() => toggleHazard(h)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                    selectedHazards.includes(h)
-                      ? 'bg-amber-500 text-white border-amber-500'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-amber-300'
-                  }`}
-                >
-                  {h}
-                </button>
-              ))}
+            <div className="flex flex-wrap gap-2">
+              {HAZARD_OPTIONS.map(h => {
+                const active = selectedHazards.includes(h)
+                return (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => toggleHazard(h)}
+                    title={h}
+                    aria-pressed={active}
+                    className={`flex flex-col items-center gap-1 w-[72px] rounded-lg border px-1.5 py-2 transition-colors ${
+                      active
+                        ? 'border-red-300 bg-red-50 ring-1 ring-red-200'
+                        : 'border-slate-200 bg-white hover:border-red-200 opacity-60 hover:opacity-100'
+                    }`}
+                  >
+                    <HazardDiamond label={h} size="md" />
+                    <span className="text-[10px] leading-tight text-center text-slate-600">{h}</span>
+                  </button>
+                )
+              })}
             </div>
           </div>
 

@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import type { Chemical } from '@/types/chemical'
+import HazardPictograms from '@/components/HazardPictogram'
 
 interface Props {
   chemicals: Chemical[]
@@ -13,29 +14,6 @@ interface Props {
 
 type SortKey = keyof Chemical
 type SortDir = 'asc' | 'desc'
-
-const HAZARD_COLORS: Record<string, string> = {
-  'Flammable': 'bg-orange-50 text-orange-700 border-orange-200',
-  'Corrosive': 'bg-yellow-50 text-yellow-700 border-yellow-200',
-  'Toxic': 'bg-red-50 text-red-700 border-red-200',
-  'Irritant': 'bg-amber-50 text-amber-700 border-amber-200',
-  'Reactive': 'bg-purple-50 text-purple-700 border-purple-200',
-  'Oxidizer': 'bg-blue-50 text-blue-700 border-blue-200',
-  'Moisture sensitive': 'bg-cyan-50 text-cyan-700 border-cyan-200',
-  'Air sensitive': 'bg-sky-50 text-sky-700 border-sky-200',
-}
-
-const HAZARD_ABBREV: Record<string, string> = {
-  'Flammable': 'Flam',
-  'Corrosive': 'Corr',
-  'Toxic': 'Tox',
-  'Irritant': 'Irrit',
-  'Reactive': 'React',
-  'Oxidizer': 'Oxid',
-  'Moisture sensitive': 'H₂O',
-  'Air sensitive': 'Air',
-  'Environmental hazard': 'Env',
-}
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '—'
@@ -288,19 +266,7 @@ export default function ChemicalTable({ chemicals, onEdit, onDelete, onBulkDelet
                     {c.storage_conditions ?? '—'}
                   </td>
                   <td className="px-3 py-2.5">
-                    {c.hazards ? (
-                      <div className="flex flex-wrap gap-1">
-                        {c.hazards.split(', ').map(h => (
-                          <span
-                            key={h}
-                            title={h}
-                            className={`badge border text-[10px] px-1.5 py-0.5 ${HAZARD_COLORS[h] ?? 'bg-slate-50 text-slate-600 border-slate-200'}`}
-                          >
-                            {HAZARD_ABBREV[h] ?? h.slice(0, 4)}
-                          </span>
-                        ))}
-                      </div>
-                    ) : '—'}
+                    {c.hazards ? <HazardPictograms hazards={c.hazards} /> : '—'}
                   </td>
                   <td className="px-3 py-2.5">
                     {c.sds_url ? (

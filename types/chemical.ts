@@ -29,6 +29,33 @@ export const MASS_SIZES = [
 ]
 export const CONTAINER_SIZES = [...VOLUME_SIZES, ...MASS_SIZES]
 
+// Given a container size and a known physical state, return the size with an
+// inferred unit (a bare "25" becomes "25 mL" for liquids / "25 g" for solids),
+// or null if the existing unit contradicts the state (e.g. grams for a liquid).
+// Returns the size unchanged when nothing needs adjusting. Callers should treat a
+// null result as "clear the field". State is required — without it we can't infer.
+export function reconcileContainerSize(size: string, state: string): string | null {
+  const cs = size.trim()
+  const s = state.toLowerCase()
+  const wantsVolume = ['liquid', 'viscous liquid', 'gas'].includes(s)
+  const wantsMass = ['solid', 'powder', 'gel'].includes(s)
+
+  // Bare number → attach the unit implied by the state
+  if (/^\d+(\.\d+)?$/.test(cs)) {
+    if (wantsVolume) return `${cs} mL`
+    if (wantsMass) return `${cs} g`
+    return cs // unknown state — leave the bare number as-is
+  }
+
+  // Existing unit that clearly contradicts the state → clear it
+  const csLow = cs.toLowerCase()
+  const isVolume = /\d\s*(ml|l)\b/.test(csLow)
+  const isMass = /\d\s*(mg|g|kg)\b/.test(csLow)
+  if ((wantsVolume && isMass) || (wantsMass && isVolume)) return null
+
+  return cs
+}
+
 export function containerSizesForState(state: string | null | undefined): string[] {
   if (!state) return CONTAINER_SIZES
   const s = state.toLowerCase()

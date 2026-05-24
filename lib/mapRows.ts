@@ -1,5 +1,5 @@
 import type { ChemicalInsert } from '@/types/chemical'
-import { normalizeDistributor, normalizePhysicalState, CONTAINER_SIZES } from '@/types/chemical'
+import { normalizeDistributor, normalizePhysicalState, reconcileContainerSize, CONTAINER_SIZES } from '@/types/chemical'
 
 // Normalize free-text container sizes to canonical values.
 // Handles "100ml" → "100 mL", "1L" → "1 L", "500mg" → "500 mg", etc.
@@ -54,22 +54,13 @@ export function applyMappings(
     })
 
     if (hasData && entry.name) {
+      // Infer a unit for bare numbers and drop clear unit/state mismatches.
+      // (Only possible when the sheet already carries the physical state; otherwise
+      // this is reconciled after PubChem fills the state during auto-enrich.)
       if (entry.container_size && entry.physical_state) {
-        const cs = (entry.container_size as string).trim()
-        // Infer unit for bare numbers (e.g. "25" → "25 g" for solids, "25 mL" for liquids)
-        if (/^\d+(\.\d+)?$/.test(cs)) {
-          const state = (entry.physical_state as string).toLowerCase()
-          const wantsVolume = ['liquid', 'viscous liquid', 'gas'].includes(state)
-          entry.container_size = `${cs} ${wantsVolume ? 'mL' : 'g'}`
-        }
-        // Drop if clear unit-type mismatch
-        const csLow = (entry.container_size as string).toLowerCase()
-        const isVolume = /\d\s*(ml|l)\b/.test(csLow)
-        const isMass   = /\d\s*(mg|g|kg)\b/.test(csLow)
-        const state    = (entry.physical_state as string).toLowerCase()
-        const wantsVolume = ['liquid', 'viscous liquid', 'gas'].includes(state)
-        const wantsMass   = ['solid', 'powder', 'gel'].includes(state)
-        if ((wantsVolume && isMass) || (wantsMass && isVolume)) delete entry.container_size
+        const reconciled = reconcileContainerSize(entry.container_size as string, entry.physical_state as string)
+        if (reconciled === null) delete entry.container_size
+        else entry.container_size = reconciled
       }
       rows.push(entry)
     }
