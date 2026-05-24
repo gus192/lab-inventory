@@ -56,6 +56,14 @@ export function reconcileContainerSize(size: string, state: string): string | nu
   return cs
 }
 
+// Fallback "SDS link" for chemicals PubChem can't resolve (polymers, mixtures,
+// modified materials, misspelled names) — a web search that reliably surfaces a
+// vendor safety data sheet, so the SDS column is never left empty.
+export function sdsSearchUrl(name: string): string {
+  const q = `${name} safety data sheet`.trim()
+  return `https://www.google.com/search?q=${encodeURIComponent(q)}`
+}
+
 export function containerSizesForState(state: string | null | undefined): string[] {
   if (!state) return CONTAINER_SIZES
   const s = state.toLowerCase()

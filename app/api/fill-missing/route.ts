@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { enrichByQuery } from '@/lib/pubchem'
+import { sdsSearchUrl } from '@/types/chemical'
 
 export async function POST() {
   // Fetch any non-deleted chemical missing at least one enrichable field
@@ -19,8 +20,16 @@ export async function POST() {
     if (!query) continue
     try {
       const data = await enrichByQuery(query)
-      if (!data) continue
       const update: Record<string, unknown> = {}
+      // Even when PubChem can't resolve the compound (polymers, mixtures, typos),
+      // give the SDS column a usable search link rather than leaving it empty.
+      if (!data) {
+        if (!c.sds_url && c.name) {
+          await supabase.from('chemicals').update({ sds_url: sdsSearchUrl(c.name as string) }).eq('id', c.id)
+          filled++
+        }
+        continue
+      }
       if (!c.sds_url && data.sds_url) update.sds_url = data.sds_url
       // "None" means we found the compound but it has no GHS hazards — store it so we don't retry
       if (!c.hazards && data.hazards) update.hazards = data.hazards

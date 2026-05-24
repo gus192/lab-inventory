@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import type { ChemicalInsert } from '@/types/chemical'
-import { COLUMN_LABELS, reconcileContainerSize } from '@/types/chemical'
+import { COLUMN_LABELS, reconcileContainerSize, sdsSearchUrl } from '@/types/chemical'
 import { applyMappings } from '@/lib/mapRows'
 import { cleanChemicalName } from '@/lib/normalizeChemicalName'
 import HazardPictograms from '@/components/HazardPictogram'
@@ -123,24 +123,28 @@ export default function ImportModal({ onClose, onImport }: Props) {
 
       const updatedRows = [...previewRows]
       let filled = 0
-      slots.forEach(({ idx }, ei) => {
+      slots.forEach(({ idx, name }, ei) => {
         const data = enriched[ei]
-        if (!data) return
         const r = { ...updatedRows[idx] }
         let changed = false
-        // Standardize spelling/capitalization to PubChem's canonical name
-        if (data.title && r.name && data.title !== r.name) { r.name = data.title; changed = true }
-        if (!r.sds_url && data.sds_url) { r.sds_url = data.sds_url; changed = true }
-        if (!r.hazards && data.hazards) { r.hazards = data.hazards; changed = true }
-        if (!r.storage_conditions && data.storage_conditions) { r.storage_conditions = data.storage_conditions; changed = true }
-        if (!r.physical_state && data.physical_state) { r.physical_state = data.physical_state; changed = true }
-        if (r.carbon_count == null && data.carbon_count != null) { r.carbon_count = data.carbon_count; changed = true }
-        // Now that the state is known, give bare-number sizes a unit ("25" → "25 mL"/"25 g")
-        if (r.container_size && r.physical_state) {
-          const reconciled = reconcileContainerSize(r.container_size, r.physical_state)
-          if (reconciled === null) { delete r.container_size; changed = true }
-          else if (reconciled !== r.container_size) { r.container_size = reconciled; changed = true }
+        if (data) {
+          // Standardize spelling/capitalization to PubChem's canonical name
+          if (data.title && r.name && data.title !== r.name) { r.name = data.title; changed = true }
+          if (!r.sds_url && data.sds_url) { r.sds_url = data.sds_url; changed = true }
+          if (!r.hazards && data.hazards) { r.hazards = data.hazards; changed = true }
+          if (!r.storage_conditions && data.storage_conditions) { r.storage_conditions = data.storage_conditions; changed = true }
+          if (!r.physical_state && data.physical_state) { r.physical_state = data.physical_state; changed = true }
+          if (r.carbon_count == null && data.carbon_count != null) { r.carbon_count = data.carbon_count; changed = true }
+          // Now that the state is known, give bare-number sizes a unit ("25" → "25 mL"/"25 g")
+          if (r.container_size && r.physical_state) {
+            const reconciled = reconcileContainerSize(r.container_size, r.physical_state)
+            if (reconciled === null) { delete r.container_size; changed = true }
+            else if (reconciled !== r.container_size) { r.container_size = reconciled; changed = true }
+          }
         }
+        // Fallback SDS link when PubChem couldn't resolve the compound at all
+        const nm = (r.name || name) as string | undefined
+        if (!r.sds_url && nm) { r.sds_url = sdsSearchUrl(nm); changed = true }
         if (changed) { updatedRows[idx] = r; filled++ }
       })
       setPreviewRows(updatedRows)

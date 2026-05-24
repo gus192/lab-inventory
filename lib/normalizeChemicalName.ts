@@ -15,6 +15,8 @@ export function cleanChemicalName(raw: string): string {
     .replace(/,\s+certified\b.*/i, '')
     // trailing "anhydrous" / "absolute" modifiers
     .replace(/,\s*(?:anhydrous|absolute|monohydrate|dihydrate|trihydrate)\b.*/i, '')
+    // same modifiers with or without a comma: "Ethyl alcohol absolute", "Sodium sulfate anhydrous", "Ethyl alcohol, denatured"
+    .replace(/[,\s]+(?:absolute|anhydrous|denatured|dehydrated|extra\s+dry)\b.*$/gi, '')
     // "absolute" run together with digits: "absolute200" → "absolute"
     .replace(/\babsolute\d+\b/gi, 'absolute')
     // "for synthesis", "for analysis" suffixes

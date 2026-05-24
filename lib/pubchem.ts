@@ -270,7 +270,9 @@ export async function enrichByQuery(query: string): Promise<PubChemData | null> 
   // actually resolve (e.g. "Xylenes" → "p-xylene", "DCM" → "dichloromethane").
   type Candidate = { q: string; keepName?: boolean }
   const candidates: Candidate[] = [{ q: query }]
-  if (cleaned && cleaned !== query) candidates.push({ q: cleaned })
+  // A match found only after stripping grade/purity/state words keeps the user's
+  // original name (don't turn "Ethyl alcohol absolute" into "Ethanol").
+  if (cleaned && cleaned !== query) candidates.push({ q: cleaned, keepName: true })
   const alias = findAlias(query, cleaned)
   if (alias) candidates.push({ q: alias.query, keepName: alias.keepName })
 
